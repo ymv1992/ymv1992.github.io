@@ -1,0 +1,332 @@
+# Points & Paradise
+
+A private, mobile-first web app that finds, values, ranks and tracks Chase
+Ultimate Rewards travel redemptions for one owner.
+
+It calculates cents per point (CPP), transfer math, deadlines and positioning
+costs with deterministic code. It shows where every number came from and how
+old it is. When it can't calculate a value, it says so instead of guessing.
+
+It **never** books travel, transfers points, takes payments, stores loyalty or
+Chase passwords, stores card numbers, scrapes websites, or makes up prices,
+availability or booking links. Demo data is fictional and is labelled
+**DEMO** everywhere it appears.
+
+- Architecture, costs, schema, page map, phases and risks:
+  [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- What works today and what doesn't: see
+  [Implemented vs incomplete](#implemented-vs-incomplete) below.
+
+---
+
+## Quick start (local)
+
+Requirements: Node.js 20.9 or newer (22 recommended). Docker and a Postgres
+server are not needed. Local development uses PGlite, an embedded Postgres
+stored in `.data/pglite`.
+
+```bash
+cd points-paradise
+npm install
+cp .env.example .env.local
+
+# 1. Create your password hash. Use a long passphrase of at least 12 characters.
+npm run hash-password -- 'correct horse battery staple paradise'
+#    Paste the output into OWNER_PASSWORD_HASH and set OWNER_EMAIL in .env.local.
+
+# 2. Create a session secret, then paste it into SESSION_SECRET.
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+
+# 3. Run the app.
+npm run dev
+```
+
+Open http://localhost:3000 and sign in. Onboarding asks for your:
+
+- card
+- points balance (default 150,000)
+- home airports (default SAN, LAX, SNA, ONT, BUR)
+- cash budget (default $1,000)
+- travel style
+- flexibility
+- deal types
+
+The schema is migrated and reference data (transfer partners and data
+sources) is seeded automatically the first time the app opens the database.
+
+### Demo data
+
+To try the app before you have real deals, use either of these:
+
+- **Settings → Data sources →** tick **Show demo data**, then **Apply demo setting**, or
+- `npm run db:seed -- --demo`
+
+Either one adds 32 fictional deals. Among them is the Tokyo example: $5,200
+cash, 75,000 miles, an illustrative 25% bonus, 60,000 Chase points, $180
+taxes, about 8.37¢ per point.
+
+Demo deals:
+
+- are labelled "Demo only — not live"
+- are never ranked as bookable
+- never trigger alerts
+- are removed when you turn the setting off
+
+## Environment variables
+
+Copy `.env.example` and fill in what you need. Every provider is optional.
+The app keeps working without it and shows what is not configured.
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `OWNER_EMAIL` | yes | The only email that can sign in. |
+| `OWNER_PASSWORD_HASH` | yes | Output of `npm run hash-password`. It is a scrypt hash, so the password itself is never stored. |
+| `SESSION_SECRET` | yes in production | 32+ random characters. Used to sign the session cookie. |
+| `APP_URL` | production | Public URL, used in email links. |
+| `DATABASE_URL` | production | Postgres connection string (Supabase pooler). If unset, PGlite is used locally. |
+| `DATABASE_POOL_MAX` | no | Postgres pool size (default 3). |
+| `PGLITE_DIR` | no | Where local PGlite data lives (default `.data/pglite`). |
+| `ALLOW_PGLITE` | no | Set to `true` only to run a production build on PGlite (for example a local `next start`). |
+| `CRON_SECRET` | for scheduled jobs | Bearer token required by `/api/cron/*`. |
+| `SEATS_AERO_API_KEY` | no | seats.aero Pro key for cached award availability. |
+| `SERPAPI_API_KEY` | no | SerpApi key for comparable cash fares and hotel rates. |
+| `RESEND_API_KEY`, `EMAIL_FROM` | no | Email alerts and the daily digest. |
+| `ANTHROPIC_API_KEY` | no | AI-written explanations, destination ideas and trip narratives. AI is used for prose only. |
+| `ANTHROPIC_MODEL` | no | Overrides the default low-cost model. |
+| `UNSPLASH_ACCESS_KEY` | no | Destination photos, credited to the photographer. |
+| `RSS_FEEDS` | no | Comma- or space-separated `https://` feed URLs to watch for transfer-bonus and deal announcements. |
+
+Secrets are read only in server code (`src/lib/server/config.ts`, which
+imports `server-only`). Pages receive yes/no flags, never keys.
+
+## Database and migrations
+
+| Command | What it does |
+|---|---|
+| `npm run db:migrate` | Applies `drizzle/*.sql` to `DATABASE_URL`, or to local PGlite if that is unset. |
+| `npm run db:seed` | Ensures reference data exists. Add `-- --demo` to also insert demo deals. Safe to repeat. |
+| `npm run db:generate` | Generates a new migration after you change `src/lib/db/schema.ts`. |
+
+Migration `0001_security_and_checks.sql` turns on row-level security for
+every table, with no policies. This means Supabase's public API keys can't
+read or write anything. The app connects as the database owner, which
+bypasses RLS. The same migration adds check constraints for points, cash,
+dates and ratios.
+
+## Deploying (Vercel + Supabase, free tiers)
+
+### 1. Create the database (Supabase)
+
+1. Create a free project at supabase.com.
+2. Open **Connect** and copy the **Transaction pooler** connection string (port 6543).
+3. Use that string as `DATABASE_URL`. The app already sets `prepare: false`,
+   which the pooler needs.
+4. Free projects pause after about a week with no activity. The daily job
+   normally counts as activity. If the project does pause, resume it from the
+   Supabase dashboard; no data is lost.
+
+### 2. Deploy the app (Vercel)
+
+1. Import this GitHub repository into Vercel.
+2. Set **Root Directory** to `points-paradise`.
+3. `vercel.json` already sets the build command to
+   `npm run db:migrate && npm run build`, so migrations run on every deploy.
+4. Add the environment variables from the table above for Production:
+   - at minimum `OWNER_EMAIL`, `OWNER_PASSWORD_HASH`, `SESSION_SECRET`,
+     `DATABASE_URL`, `APP_URL` and `CRON_SECRET`
+   - any provider keys you want to use
+5. Deploy, open the site, and sign in.
+
+If a migration fails through the pooler, run it once from your computer
+against the session pooler or direct connection string:
+
+```bash
+DATABASE_URL='postgres://…' npm run db:migrate
+```
+
+### 3. Scheduled jobs
+
+There are two jobs, both at `/api/cron/<job>`:
+
+| Job | What it does |
+|---|---|
+| `frequent` | Deadline reminders and due watch checks. |
+| `daily` | Everything in `frequent`, plus archiving expired deals, recomputing values, comparable-cash enrichment, photos, RSS ingest and the daily digest. |
+
+Both jobs require the header `Authorization: Bearer $CRON_SECRET`.
+
+- **Vercel Cron.** `vercel.json` runs `daily` once a day at 14:17 UTC
+  (7:17 AM Pacific in summer). Vercel adds the bearer header automatically
+  when `CRON_SECRET` is set. The Hobby plan allows one run per day.
+- **GitHub Actions (optional, also free).** `.github/workflows/points-paradise-cron.yml`
+  runs `frequent` every hour and `daily` once a day. To turn it on:
+  1. Add the repository **variable** `PP_CRON_ENABLED=true`.
+  2. Add the repository **secrets** `PP_APP_URL` (for example
+     `https://your-app.vercel.app`) and `PP_CRON_SECRET` (the same value as
+     `CRON_SECRET`).
+- **Run on demand.** **Alerts → Run checks now** runs the same checks for
+  you immediately.
+
+To call a job by hand:
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" https://your-app.vercel.app/api/cron/daily
+```
+
+### GitHub Pages note
+
+This repository also hosts a GitHub Pages site. The root `_config.yml`
+excludes `points-paradise/` from the Jekyll build, so the app's source and
+docs are not published as Pages content. The app itself runs on Vercel.
+
+## Enabling providers
+
+Every provider is off until its key is set. Each one is cached,
+quota-limited and logged at **Settings → Usage**. Paid calls pause before
+your monthly cap is reached (defaults: $5 for APIs, $2 for AI, both editable
+in Settings). Read each provider's terms before enabling it. The
+restrictions are summarized at **Settings → Data sources** and in
+`docs/ARCHITECTURE.md`.
+
+| Provider | How to enable | What you get |
+|---|---|---|
+| **seats.aero** | Subscribe to Pro (about $10/month) and create an API key. Set `SEATS_AERO_API_KEY`. | Cached award availability on your route watches, plus award search on the Award Calendar. Personal, non-commercial use only. Limit is 1,000 calls per day. |
+| **SerpApi** | Create an account and set `SERPAPI_API_KEY`. | Comparable cash fares (Google Flights) and hotel rates (Google Hotels), used to value deals that have no cash price yet. Uses the free monthly allowance first. |
+| **Resend** | Verify a sending domain or address. Set `RESEND_API_KEY` and `EMAIL_FROM`, then turn on email in Settings. | Instant alerts and the daily digest by email. |
+| **Anthropic** | Create an API key and set `ANTHROPIC_API_KEY`. | AI-written deal explanations, destination ideas and trip narratives. The AI receives computed facts only and never generates prices or availability. |
+| **Unsplash** | Register an app and set `UNSPLASH_ACCESS_KEY`. | Destination photos with credit to the photographer. Without a key, the app draws its own illustrations. |
+| **RSS** | Set `RSS_FEEDS`. | Matching announcements appear in **Alerts** as unverified leads for you to review. |
+
+Chase has no public API. You enter these yourself; the app gives
+step-by-step instructions:
+
+- Chase balances
+- card type
+- Chase Travel portal prices
+- confirmed transfer bonuses
+
+## Testing
+
+```bash
+npm run typecheck   # tsc --noEmit
+npm run lint        # eslint
+npm test            # vitest: 119 tests
+npm run check       # all three
+SESSION_SECRET=any-32-character-placeholder-value npm run build
+```
+
+### Test coverage
+
+| Test file | What it covers |
+|---|---|
+| `tests/engine/*` | CPP and practical value, comparability refusals, transfer math (ratios, card overrides, bonuses, increments, minimums, rounding), ranking and evidence tiers, deadlines and reminders (including DST), staleness, personalization, positioning, budgets, priority queue, alert decisions, trip building, trip-request parsing. |
+| `tests/db/*` | Runs against in-memory PGlite. Reference seeds, account bootstrap, manual-deal validation and dedupe, price history, archiving, saved snapshots, collection ownership, undo, notification dedupe, demo labelling and removal. |
+| `tests/jobs/*` | Reminders sent once, seats.aero watch checks, quota exhaustion, a missing key reported rather than crashing, RSS ingest. |
+| `tests/providers/*` | Adapters run against recorded response fixtures. |
+
+`tests/fixtures.ts` holds the test fixtures. They are separate from the
+demo seed and from production data.
+
+GitHub Actions runs typecheck, lint, tests and build on every push that
+touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
+
+## Your data
+
+- **Settings → Privacy & data → Download my data (JSON)** exports everything.
+- **Settings → Privacy & data → Permanently delete my data** removes your
+  account data. Transfer-partner reference data is kept.
+- No loyalty passwords or card numbers are ever requested or stored.
+
+## Implemented vs incomplete
+
+### Implemented and tested
+
+- **Sign-in and onboarding.** Owner-only sign-in, rate-limited, with a
+  signed session cookie. First-run onboarding, a points wallet with card
+  type, and multiple travel profiles.
+- **Discover.** Swipe and list modes with Save, Pass, Details and Undo, and
+  ten feed modes.
+- **Rankings.** Top 100 and 13 category leaderboards with filters and
+  sorts. Every rank explains itself. Unverified, stale, expired and demo
+  deals are never ranked as bookable.
+- **Value engine.** Headline and practical CPP. It flags inflated cash
+  prices and shows "Value cannot be reliably calculated" when cash and award
+  products don't match.
+- **Transfer Center.** Partner directory with card-specific ratios
+  (including the reported Hyatt 4:3 change for some cards) and promotions
+  with time-zone-aware windows. The calculator rates whether a transfer is
+  advisable and warns against speculative transfers. You can edit partners.
+- **Deal detail.** Value breakdown, transfer plan, booking checklist,
+  aircraft and room verification checklist, countdown for confirmed
+  deadlines only, and price history.
+- **Deal entry.** Manual entry and JSON/CSV import, both validated, with
+  dedupe.
+- **Saved.** Nine default collections plus your own, notes, ratings,
+  save-time snapshots compared with current values, side-by-side compare,
+  and watches.
+- **Alerts.** Alert preferences, dedupe, quiet hours, the daily digest, and
+  reminders at 7 days, 3 days, 24 hours, 6 hours and 1 hour. Delivered in
+  the app, by browser notification while the app is open, and by email.
+- **History.** Archive of missed and expired deals, with "watch for similar".
+- **Award Calendar.** Heatmap, price-history chart, seasonal table and
+  predictions marked with their evidence tier. Predictions are withheld when
+  there is too little data.
+- **Positioning optimizer.** Full cost breakdown and separate-ticket
+  warnings.
+- **Trip Architect.** Turns a plain-English request into plans that fit
+  your points and cash. Incomplete plans are labelled.
+- **Personality engine.** Learns from your choices and can be reset.
+  Personal match is kept separate from value.
+- **Scheduling and limits.** Scheduled jobs, the usage dashboard, spend
+  caps and the data-source registry.
+- **App shell.** PWA install with an offline page, and light and dark
+  themes.
+
+### Built but not exercised against live services
+
+This environment had no provider keys, so these paths are tested only with
+recorded fixtures, mocks, or type-checking:
+
+- **seats.aero, SerpApi, Unsplash and RSS adapters.** Tested with recorded
+  response shapes, not live calls. Run one check after adding each key and
+  look at **Settings → Usage**.
+- **Resend email.** The delivery logic is tested with a mocked sender. No
+  real email was sent.
+- **Anthropic AI features.** Explanations, ideas and narratives are
+  type-checked and budget-gated but were not called live. Every feature
+  works with AI turned off.
+- **Supabase/Postgres.** Migrations and queries were run on PGlite
+  (Postgres-compatible), not on a hosted Supabase database.
+
+### Not implemented
+
+- **Background push notifications** (Web Push) while the app is closed.
+  Browser notifications appear only while a tab is open; use email for
+  everything else.
+- **Automatic Chase data**: balances, Chase Travel portal prices and
+  transfer bonuses. There is no permitted API, so these are entered
+  manually.
+- **Automatic hotel award availability.** No permitted hotel-award API is
+  integrated, so hotel awards are entered manually or imported.
+- **Automatic seat maps, aircraft swaps and room-type verification.** The
+  app gives a checklist and fields to record what you confirmed.
+- **A committed end-to-end browser test suite.** The UI was smoke-tested in
+  a headless browser during development; there is no committed Playwright
+  suite.
+- **Multi-user accounts** (Phase 5). Not built, by design.
+
+## Project layout
+
+```
+points-paradise/
+  src/app/            pages, server actions, API routes (cron, export)
+  src/components/     UI components (cards, charts, map, forms)
+  src/lib/engine/     pure, tested calculation engine
+  src/lib/data/       database queries and business operations
+  src/lib/providers/  external API adapters (server-only)
+  src/lib/db/         schema, client, reference and demo seeds
+  drizzle/            SQL migrations
+  scripts/            migrate, seed, hash-password, airport data build
+  tests/              vitest suites and fixtures
+  docs/               architecture and planning
+```

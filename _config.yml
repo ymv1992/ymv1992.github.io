@@ -1,0 +1,5 @@
+# GitHub Pages (Jekyll) settings for this site.
+# The Points & Paradise app is deployed separately (see points-paradise/README.md);
+# keep its source and docs out of the Pages build.
+exclude:
+  - points-paradise

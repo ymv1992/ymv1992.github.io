@@ -1,0 +1,172 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #f8f4ec;
+  --surface: #fffdf8;
+  --surface-2: #f1ebdf;
+  --ink: #18202e;
+  --muted: #5b6474;
+  --faint: #8a91a0;
+  --line: #e4dccb;
+  --primary: #2f6f6c;
+  --primary-ink: #ffffff;
+  --primary-soft: #dcebe9;
+  --gold: #a8842f;
+  --gold-soft: #f2e7cc;
+  --champagne: #e9dcc0;
+  --navy: #0f1b2d;
+  --danger: #a8483a;
+  --danger-soft: #f6e1dc;
+  --warn: #9a6a12;
+  --warn-soft: #f6ebd2;
+  --ok: #2f6e4c;
+  --ok-soft: #dcefe3;
+  --shadow: 0 1px 2px rgb(15 27 45 / 0.06), 0 8px 24px rgb(15 27 45 / 0.06);
+  /* Chart data colors (validated for chroma and contrast against --surface). */
+  --data: #009084;
+  --seq-1: #e0f2ef;
+  --seq-2: #a9dcd4;
+  --seq-3: #63bdb1;
+  --seq-4: #1f9a8c;
+  --seq-5: #0b6f66;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #0b1422;
+  --surface: #121e31;
+  --surface-2: #192840;
+  --ink: #ece6d9;
+  --muted: #a5adbb;
+  --faint: #7b8597;
+  --line: #24354f;
+  --primary: #6fb3ae;
+  --primary-ink: #06201f;
+  --primary-soft: #1a3a3d;
+  --gold: #d2b06a;
+  --gold-soft: #33301f;
+  --champagne: #3a3426;
+  --navy: #060c16;
+  --danger: #e08a7b;
+  --danger-soft: #3a1f1b;
+  --warn: #e0b45c;
+  --warn-soft: #382c14;
+  --ok: #7cc39b;
+  --ok-soft: #173326;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 30px rgb(0 0 0 / 0.25);
+  --data: #36a99f;
+  /* Dark mode flips the sequential anchor: more intense = lighter. */
+  --seq-1: #16302f;
+  --seq-2: #1d4d4a;
+  --seq-3: #237067;
+  --seq-4: #36a99f;
+  --seq-5: #7fd3c7;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-primary: var(--primary);
+  --color-primary-ink: var(--primary-ink);
+  --color-primary-soft: var(--primary-soft);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-champagne: var(--champagne);
+  --color-navy: var(--navy);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --font-display: 'Fraunces Variable', 'Iowan Old Style', Georgia, serif;
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --shadow-card: var(--shadow);
+  --color-data: var(--data);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  letter-spacing: -0.01em;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Form controls share one quiet style. */
+.field {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.95rem;
+}
+.field:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 0;
+  border-color: transparent;
+}
+.label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+
+@keyframes pp-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-in {
+  animation: pp-fade-up 220ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}

@@ -1,0 +1,27 @@
+name: Points & Paradise scheduled checks
+
+# Optional, more frequent schedule than Vercel Hobby's once-a-day cron.
+# Disabled until you set the repository variable PP_CRON_ENABLED=true and the
+# secrets PP_APP_URL (e.g. https://your-app.vercel.app) and PP_CRON_SECRET.
+on:
+  schedule:
+    - cron: '23 * * * *' # hourly: deadline reminders, due watch checks
+    - cron: '11 14 * * *' # daily: archive, enrichment, photos, RSS, digest
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  run:
+    if: vars.PP_CRON_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call the job endpoint
+        env:
+          APP_URL: ${{ secrets.PP_APP_URL }}
+          CRON_SECRET: ${{ secrets.PP_CRON_SECRET }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          job=frequent
+          if [ "$SCHEDULE" = "11 14 * * *" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then job=daily; fi
+          curl --fail-with-body -sS -m 120 -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/$job"
