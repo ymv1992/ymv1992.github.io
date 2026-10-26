@@ -95,7 +95,7 @@ export default async function UsagePage() {
               <span>
                 <strong>{j.provider}</strong> · {j.jobType}{' '}
                 <Badge tone={j.status === 'succeeded' ? 'ok' : j.status === 'failed' ? 'danger' : 'warn'}>{j.status.replace(/_/g, ' ')}</Badge>
-                {j.provider === 'seats_aero' && j.status === 'succeeded' && <SearchCounts params={j.params} kept={j.resultsCount} />}
+                {(j.provider === 'seats_aero' || j.provider === 'rooms_aero') && j.status === 'succeeded' && <SearchCounts params={j.params} kept={j.resultsCount} />}
                 {j.error && <span className="block text-xs text-danger">{j.error}</span>}
               </span>
               <span className="tabular text-xs text-muted">

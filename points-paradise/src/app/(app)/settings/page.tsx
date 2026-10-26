@@ -17,6 +17,7 @@ import { loadAccount } from '@/lib/data/account'
 import { listPartners } from '@/lib/data/transfers'
 import { dayStart, requestsSince, usageSummary } from '@/lib/data/usage'
 import { DISCOVERY_DAILY_CAP, DISCOVERY_DESTINATIONS } from '@/lib/jobs/discovery'
+import { HOTEL_PLACES } from '@/lib/jobs/hotel-discovery'
 import { integrationStatus } from '@/lib/server/config'
 import { requireUserId } from '@/lib/server/session'
 import { usd } from '@/lib/format'
@@ -361,7 +362,9 @@ export default async function SettingsPage() {
           <h3 className="font-semibold">Automatic discovery</h3>
           <p className="mt-1 text-sm text-muted">
             Once a day, looks up open award seats from your home airports ({profile.homeAirports.join(', ') || 'SAN, LAX, SNA, ONT, BUR'}) to {destinationCount} popular destinations and
-            any dream destinations it can match to an airport, across the Chase airline partners seats.aero covers. New finds appear in Discover.
+            any dream destinations it can match to an airport, across the Chase airline partners seats.aero covers. It also looks up award nights at Hyatt, Marriott, IHG and
+            Wyndham hotels in {HOTEL_PLACES.length} popular places and your dream destinations, with the hotel&rsquo;s cash rate for the same stay so each one gets a value. New
+            finds appear in Discover.
           </p>
           <p className="mt-2 text-sm">
             {integrations.seatsAero ? (
@@ -377,6 +380,10 @@ export default async function SettingsPage() {
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" name="discoveryEnabled" defaultChecked={settings.discoveryEnabled} /> Search automatically every day
             </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="hotelDiscoveryEnabled" defaultChecked={settings.hotelDiscoveryEnabled} /> Include hotels: award nights at Hyatt, Marriott, IHG and Wyndham (rooms.aero, same key, its own 1,000
+              daily lookups)
+            </label>
             <fieldset className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
               <legend className="mb-1 text-muted">Cabins to look for</legend>
               {CABINS.map((c) => (
@@ -390,7 +397,7 @@ export default async function SettingsPage() {
         <ul className="divide-y divide-line rounded-xl border border-line">
           {usage.sources.map((s) => {
             const configured =
-              s.id === 'seats_aero' ? integrations.seatsAero : s.id.startsWith('serpapi') ? integrations.serpApi : s.id === 'resend' ? integrations.email : s.id === 'anthropic' ? integrations.ai : s.id === 'unsplash' ? integrations.unsplash : s.id === 'rss_announcements' ? integrations.rss : null
+              s.id === 'seats_aero' || s.id === 'rooms_aero' ? integrations.seatsAero : s.id.startsWith('serpapi') ? integrations.serpApi : s.id === 'resend' ? integrations.email : s.id === 'anthropic' ? integrations.ai : s.id === 'unsplash' ? integrations.unsplash : s.id === 'rss_announcements' ? integrations.rss : null
             return (
               <li key={s.id} className="p-3 text-sm">
                 <div className="flex flex-wrap items-center gap-2">

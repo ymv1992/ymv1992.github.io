@@ -204,12 +204,28 @@ A full cycle takes a few days with only the daily Vercel job. Enabling the
 optional hourly GitHub Actions job, or tapping **Alerts → Run checks now**,
 speeds it up.
 
-Discovered awards don't have a cash price at first. Discover lists them by
+**Hotels.** The same key works for rooms.aero, seats.aero's hotel search, which
+has its own 1,000 daily calls. The `discover` job (and **Run checks now**)
+also searches 37 popular places plus your dream destinations for award nights
+at Hyatt, Marriott, IHG and Wyndham. Stays are the length of your shortest
+trip in your profile, kept between 1 and 5 nights.
+
+- It keeps the six best-value hotels per place.
+- rooms.aero gives the hotel's cash rate for the same stay, so hotel finds
+  get a cents-per-point value straight away and can appear in Top 100.
+- A hotel that stops appearing for 10 days moves to History.
+- Hotel discovery uses at most 60 calls a day. Switch it off in **Settings →
+  Data sources → Automatic discovery**.
+- The rooms.aero client follows public example code, because the official
+  reference wasn't reachable when it was written. Every search records what
+  came back at **Settings → Usage**.
+
+Discovered flights don't have a cash price at first. Discover lists them by
 fewest points until a comparable cash price is added: you add it yourself,
 or SerpApi adds a few a day on its free tier. After that they appear in
 Top 100 with a cents-per-point value. seats.aero covers only some Chase
 partners (United, Air Canada Aeroplan, Air France/KLM Flying Blue and Virgin
-Atlantic in this app), and hotel awards stay manual.
+Atlantic in this app), and hotel awards come from rooms.aero (see Hotels above).
 
 ### GitHub Pages note
 
@@ -316,8 +332,10 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
   the app, by browser notification while the app is open, and by email.
 - **Automatic discovery.** With a seats.aero key, a daily search from your
   home airports to 58 popular destinations plus your dream destinations
-  fills Discover and Top 100 on its own. It can be switched off or limited
-  to certain cabins in Settings.
+  fills Discover and Top 100 on its own, along with award nights at Hyatt,
+  Marriott, IHG and Wyndham hotels in 37 popular places through rooms.aero
+  (same key). It can be switched off, limited to certain cabins, or set to
+  skip hotels in Settings.
 - **History.** Archive of missed and expired deals, with "watch for similar".
 - **Award search, including "Anywhere".** On the Award Calendar page (or
   **Discover → Search anywhere**), leave "To" empty to check all discovery
@@ -363,8 +381,9 @@ recorded fixtures, mocks, or type-checking:
 - **Automatic Chase data**: balances, Chase Travel portal prices and
   transfer bonuses. There is no permitted API, so these are entered
   manually.
-- **Automatic hotel award availability.** No permitted hotel-award API is
-  integrated, so hotel awards are entered manually or imported.
+- **Hotel award availability beyond Hyatt, Marriott, IHG and Wyndham.**
+  rooms.aero covers these Chase partners; other hotels are entered manually
+  or imported.
 - **Automatic seat maps, aircraft swaps and room-type verification.** The
   app gives a checklist and fields to record what you confirmed.
 - **A committed end-to-end browser test suite.** The UI was smoke-tested in

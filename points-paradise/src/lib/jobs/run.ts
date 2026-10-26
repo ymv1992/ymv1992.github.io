@@ -25,6 +25,7 @@ import { searchFlightPrice, searchHotelRate } from '../providers/serpapi'
 import { searchDestinationPhoto } from '../providers/unsplash'
 import { fetchFeed, matchKeywords } from '../providers/rss'
 import { DISCOVERY_METHOD, runDiscovery, type DiscoveryLimits } from './discovery'
+import { HOTEL_METHOD, runHotelDiscovery } from './hotel-discovery'
 import { cpp as fmtCpp, points as fmtPoints } from '../format'
 
 export interface JobDeps {
@@ -43,8 +44,10 @@ export interface JobSummary {
   archived: number
   notifications: number
   watchChecks: number
-  /** New deals found by automatic discovery. */
+  /** New flight deals found by automatic discovery. */
   discovered: number
+  /** New hotel deals found by automatic hotel discovery. */
+  hotels: number
   enriched: number
   photos: number
   announcements: number
@@ -53,12 +56,21 @@ export interface JobSummary {
 }
 
 const DAY = 86_400_000
+const MAX_DISCOVERY_VALUE_ALERTS = 3
 
 /** seats.aero discovery calls per run; the daily cap in discovery.ts applies on top. */
 const DISCOVERY_LIMITS: Record<JobMode, DiscoveryLimits> = {
-  discover: { maxCalls: 30, timeBudgetMs: 40_000 },
-  manual: { maxCalls: 6, timeBudgetMs: 20_000 },
-  frequent: { maxCalls: 3, timeBudgetMs: 10_000 },
+  discover: { maxCalls: 30, timeBudgetMs: 25_000 },
+  manual: { maxCalls: 6, timeBudgetMs: 15_000 },
+  frequent: { maxCalls: 3, timeBudgetMs: 8_000 },
+  daily: { maxCalls: 0, timeBudgetMs: 0 },
+}
+
+/** rooms.aero hotel searches per run; the daily cap in hotel-discovery.ts applies on top. */
+const HOTEL_LIMITS: Record<JobMode, DiscoveryLimits> = {
+  discover: { maxCalls: 12, timeBudgetMs: 18_000 },
+  manual: { maxCalls: 4, timeBudgetMs: 10_000 },
+  frequent: { maxCalls: 2, timeBudgetMs: 6_000 },
   daily: { maxCalls: 0, timeBudgetMs: 0 },
 }
 
@@ -83,7 +95,7 @@ async function source(db: AppDb, id: string) {
  */
 export async function runJobs(db: AppDb, deps: JobDeps, mode: JobMode, onlyUserId?: string): Promise<JobSummary> {
   const now = deps.now
-  const summary: JobSummary = { mode, archived: 0, notifications: 0, watchChecks: 0, discovered: 0, enriched: 0, photos: 0, announcements: 0, skipped: [], errors: [] }
+  const summary: JobSummary = { mode, archived: 0, notifications: 0, watchChecks: 0, discovered: 0, hotels: 0, enriched: 0, photos: 0, announcements: 0, skipped: [], errors: [] }
   const userRows = await db.select({ id: users.id }).from(users)
   const userIds = userRows.map((u) => u.id).filter((id) => !onlyUserId || id === onlyUserId)
 
@@ -114,6 +126,12 @@ async function discover(db: AppDb, deps: JobDeps, userId: string, mode: JobMode,
   summary.discovered += r.newDeals
   summary.skipped.push(...r.skipped)
   summary.errors.push(...r.errors)
+  if (HOTEL_LIMITS[mode].maxCalls > 0) {
+    const h = await runHotelDiscovery(db, userId, { now: deps.now, apiKey: deps.keys.seatsAero, fetch: deps.fetch }, HOTEL_LIMITS[mode])
+    summary.hotels += h.newDeals
+    summary.skipped.push(...h.skipped)
+    summary.errors.push(...h.errors)
+  }
 }
 
 async function deliveryConfig(db: AppDb, deps: JobDeps, userId: string): Promise<{ cfg: DeliveryConfig; data: Awaited<ReturnType<typeof loadEvaluationData>> }> {
@@ -252,21 +270,31 @@ async function evaluateAlerts(db: AppDb, deps: JobDeps, userId: string, summary:
   const lastKey = `jobs:lastAlertRun:${userId}`
   const last = await getState<{ at: string }>(db, lastKey)
   const since = last ? new Date(last.at) : new Date(now.getTime() - DAY)
-  // Discovery can add many dates for one dream city at once; alert only on the cheapest per city.
+  // Discovery can add many finds at once: alert on the cheapest per dream city (flights and hotels
+  // separately) and on at most MAX_DISCOVERY_VALUE_ALERTS of the best-value finds per run.
+  const fromDiscovery = (e: (typeof data.items)[number]) => e.deal.verificationMethod === DISCOVERY_METHOD || e.deal.verificationMethod === HOTEL_METHOD
   const dreamPick = new Map<string, { id: string; points: number }>()
   for (const e of data.items) {
-    if (e.deal.verificationMethod !== DISCOVERY_METHOD || e.deal.firstSeenAt <= since) continue
+    if (!fromDiscovery(e) || e.deal.firstSeenAt <= since) continue
     if (!e.match.reasons.some((r) => r.startsWith('Dream destination'))) continue
     const points = e.valuation.chasePoints ?? Infinity
-    const cur = dreamPick.get(e.deal.destination.city)
-    if (!cur || points < cur.points) dreamPick.set(e.deal.destination.city, { id: e.deal.id, points })
+    const key = `${e.deal.kind}|${e.deal.destination.city}`
+    const cur = dreamPick.get(key)
+    if (!cur || points < cur.points) dreamPick.set(key, { id: e.deal.id, points })
   }
+  const valueAllowed = new Set(
+    data.items
+      .filter((e) => fromDiscovery(e) && e.deal.firstSeenAt > since && (e.valuation.practicalCpp ?? e.valuation.headlineCpp) != null)
+      .sort((a, b) => (b.valuation.practicalCpp ?? b.valuation.headlineCpp ?? 0) - (a.valuation.practicalCpp ?? a.valuation.headlineCpp ?? 0))
+      .slice(0, MAX_DISCOVERY_VALUE_ALERTS)
+      .map((e) => e.deal.id),
+  )
   for (const e of data.items) {
     if (e.deal.sourceKind === 'demo' || e.deal.firstSeenAt <= since) continue
     if (e.status === 'expired' || e.status === 'unavailable') continue
     const value = e.valuation.practicalCpp ?? e.valuation.headlineCpp
     const label = `${e.deal.destination.city} — ${e.deal.providerName}`
-    if (value != null && value >= (prefs.minCpp ?? 3)) {
+    if (value != null && value >= (prefs.minCpp ?? 3) && (!fromDiscovery(e) || valueAllowed.has(e.deal.id))) {
       count(
         await notify(
           db,
@@ -291,7 +319,7 @@ async function evaluateAlerts(db: AppDb, deps: JobDeps, userId: string, summary:
         ),
       )
     }
-    const dreamAllowed = e.deal.verificationMethod !== DISCOVERY_METHOD || dreamPick.get(e.deal.destination.city)?.id === e.deal.id
+    const dreamAllowed = !fromDiscovery(e) || dreamPick.get(`${e.deal.kind}|${e.deal.destination.city}`)?.id === e.deal.id
     if (dreamAllowed && e.match.reasons.some((r) => r.startsWith('Dream destination'))) {
       count(
         await notify(

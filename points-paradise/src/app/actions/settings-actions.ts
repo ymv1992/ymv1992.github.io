@@ -225,11 +225,12 @@ export async function setDemoModeAction(_prev: FormState, fd: FormData): Promise
 export async function saveDiscoveryAction(_prev: FormState, fd: FormData): Promise<FormState> {
   const userId = await requireUserId()
   const enabled = bool(fd.get('discoveryEnabled'))
+  const hotels = bool(fd.get('hotelDiscoveryEnabled'))
   const cabins = fd.getAll('discoveryCabins').map(String)
   const parsed = z.array(z.enum(CABINS)).safeParse(cabins)
   if (!parsed.success) return { error: firstIssue(parsed.error) }
   if (enabled && parsed.data.length === 0) return { error: 'Choose at least one cabin, or turn discovery off.' }
-  await (await getDb()).update(userSettings).set({ discoveryEnabled: enabled, discoveryCabins: parsed.data, updatedAt: new Date() }).where(eq(userSettings.userId, userId))
+  await (await getDb()).update(userSettings).set({ discoveryEnabled: enabled, hotelDiscoveryEnabled: hotels, discoveryCabins: parsed.data, updatedAt: new Date() }).where(eq(userSettings.userId, userId))
   revalidatePath('/settings')
   return { error: null, ok: enabled ? 'Discovery settings saved.' : 'Automatic discovery turned off.' }
 }
