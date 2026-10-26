@@ -32,6 +32,7 @@ const PATHS = {
   archive: 'M3 5h18v4H3zM5 9v10h14V9M10 13h4',
   download: 'M12 4v11M7 10l5 5 5-5M5 20h14',
   refresh: 'M20 11a8 8 0 0 0-14.9-3.9M4 4v4h4M4 13a8 8 0 0 0 14.9 3.9M20 20v-4h-4',
+  search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM20 20l-4-4',
 } as const
 
 export type IconName = keyof typeof PATHS

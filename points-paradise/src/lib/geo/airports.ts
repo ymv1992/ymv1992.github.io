@@ -19,6 +19,37 @@ export interface Airport {
 type Row = [string, string, string, string, number, number, string, 'L' | 'M']
 const countries = countriesJson as Record<string, { name: string; continent: string }>
 
+/**
+ * The bundled data names the municipality an airport sits in (e.g. "Narita",
+ * "Ferno (VA)"). Travelers think in destination cities, and deals, dream
+ * destinations and Discover group by city, so major airports use that name.
+ */
+const CITY_OVERRIDES: Record<string, string> = {
+  NRT: 'Tokyo',
+  TPE: 'Taipei',
+  DPS: 'Bali',
+  MNL: 'Manila',
+  KUL: 'Kuala Lumpur',
+  DMK: 'Bangkok',
+  HNL: 'Honolulu',
+  OGG: 'Maui',
+  KOA: 'Kona',
+  LIH: 'Kauai',
+  SYD: 'Sydney',
+  CDG: 'Paris',
+  ORY: 'Paris',
+  FRA: 'Frankfurt',
+  MXP: 'Milan',
+  ATH: 'Athens',
+  EDI: 'Edinburgh',
+  SJD: 'Los Cabos',
+  SJO: 'San José',
+  EZE: 'Buenos Aires',
+  GIG: 'Rio de Janeiro',
+  BOG: 'Bogotá',
+  SNA: 'Orange County',
+}
+
 let cache: Map<string, Airport> | null = null
 
 function load(): Map<string, Airport> {
@@ -29,7 +60,7 @@ function load(): Map<string, Airport> {
     map.set(iata, {
       iata,
       name,
-      city,
+      city: CITY_OVERRIDES[iata] ?? city,
       countryCode: cc,
       countryName: c?.name ?? cc,
       lat,

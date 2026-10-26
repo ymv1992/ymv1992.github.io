@@ -258,7 +258,7 @@ SESSION_SECRET=any-32-character-placeholder-value npm run build
 | Test file | What it covers |
 |---|---|
 | `tests/engine/*` | CPP and practical value, comparability refusals, transfer math (ratios, card overrides, bonuses, increments, minimums, rounding), ranking and evidence tiers, deadlines and reminders (including DST), staleness, personalization, positioning, budgets, priority queue, alert decisions, trip building, trip-request parsing. |
-| `tests/db/*` | Runs against in-memory PGlite. Reference seeds, account bootstrap, manual-deal validation and dedupe, price history, archiving, saved snapshots, collection ownership, undo, notification dedupe, demo labelling and removal. |
+| `tests/db/*` | Award search (Anywhere and single route, partial failures, quota, validation). Runs against in-memory PGlite. Reference seeds, account bootstrap, manual-deal validation and dedupe, price history, archiving, saved snapshots, collection ownership, undo, notification dedupe, demo labelling and removal. |
 | `tests/jobs/*` | Reminders sent once, seats.aero watch checks, quota exhaustion, a missing key reported rather than crashing, RSS ingest, automatic discovery (search parameters, cheapest-date selection, vanished seats moved to History, daily cap and quota reserve, on/off switch, one dream alert per city). |
 | `tests/providers/*` | Adapters run against recorded response fixtures. |
 
@@ -319,6 +319,12 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
   fills Discover and Top 100 on its own. It can be switched off or limited
   to certain cabins in Settings.
 - **History.** Archive of missed and expired deals, with "watch for similar".
+- **Award search, including "Anywhere".** On the Award Calendar page (or
+  **Discover → Search anywhere**), leave "To" empty to check all discovery
+  destinations from an airport, optionally with your other home airports,
+  for chosen dates and cabin. You get the cheapest date per city and month,
+  listed cheapest first. That's about 10 seats.aero lookups per search, so
+  no extra cost.
 - **Award Calendar.** Heatmap, price-history chart, seasonal table and
   predictions marked with their evidence tier. Predictions are withheld when
   there is too little data.

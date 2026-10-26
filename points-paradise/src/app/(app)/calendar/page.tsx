@@ -9,6 +9,7 @@ import { integrationStatus } from '@/lib/server/config'
 import { getEvaluationWithArchive } from '@/lib/server/loaders'
 import { AwardCalendar, type CalendarCell } from '@/components/calendar/award-calendar'
 import { AwardSearchForm } from '@/components/calendar/award-search-form'
+import { DISCOVERY_DESTINATIONS } from '@/lib/jobs/discovery'
 import { PriceHistoryChart } from '@/components/charts/price-history-chart'
 import { Badge, Card, PageHeader, SectionTitle } from '@/components/ui'
 
@@ -104,10 +105,14 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     <div className="space-y-6">
       <PageHeader eyebrow="Award Calendar" title="Flexible dates" subtitle="Lowest points observed per travel date, plus how prices have moved over time. Cached and historical prices are labelled — re-check before booking." />
 
-      <Card className="p-5">
+      <Card id="search" className="scroll-mt-20 p-5">
         <SectionTitle>Search award space</SectionTitle>
         {integrationStatus().seatsAero ? (
-          <AwardSearchForm defaults={{ origin: firstFlight?.originAirport ?? data.account.profile.homeAirports[0] ?? 'LAX', destination: firstFlight?.destination.airport ?? '', cabin: firstFlight?.flight?.cabin ?? 'business', startDate: today, endDate: in60 }} />
+          <AwardSearchForm
+            defaults={{ origin: data.account.profile.homeAirports[0] ?? 'LAX', destination: '', cabin: firstFlight?.flight?.cabin ?? 'business', startDate: today, endDate: in60 }}
+            homeAirports={data.account.profile.homeAirports}
+            destinationCount={DISCOVERY_DESTINATIONS.reduce((n, g) => n + g.airports.length, 0)}
+          />
         ) : (
           <p className="text-sm text-muted">
             Live calendar search needs a seats.aero Pro API key (personal use, about $10/month — see Settings → Data sources). Without it, the calendar is built from deals you add and their price history.
