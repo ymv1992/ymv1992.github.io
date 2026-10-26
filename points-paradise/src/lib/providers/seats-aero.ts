@@ -19,27 +19,31 @@ import { getAirport } from '../geo/airports'
 export const SEATS_AERO_BASE = 'https://seats.aero/partnerapi'
 
 const num = z.preprocess((v) => (v === '' || v == null ? null : Number(v)), z.number().nullable())
+const bool = z.preprocess((v) => (v === 'true' ? true : v === 'false' ? false : v), z.boolean().nullish())
+const text = z.union([z.string(), z.number()]).nullish()
 
+// Lenient on purpose: fields seats.aero leaves empty may come back as null,
+// and one unexpected null must not make a whole result unreadable.
 const itemSchema = z.object({
-  ID: z.string(),
+  ID: z.union([z.string(), z.number()]).transform(String),
   Route: z
     .object({
       OriginAirport: z.string(),
       DestinationAirport: z.string(),
       Distance: num.optional(),
-      Source: z.string().optional(),
+      Source: z.string().nullish(),
     })
     .passthrough(),
   Date: z.string(),
   Source: z.string(),
-  YAvailable: z.boolean().optional(),
-  WAvailable: z.boolean().optional(),
-  JAvailable: z.boolean().optional(),
-  FAvailable: z.boolean().optional(),
-  YMileageCost: z.union([z.string(), z.number()]).optional(),
-  WMileageCost: z.union([z.string(), z.number()]).optional(),
-  JMileageCost: z.union([z.string(), z.number()]).optional(),
-  FMileageCost: z.union([z.string(), z.number()]).optional(),
+  YAvailable: bool,
+  WAvailable: bool,
+  JAvailable: bool,
+  FAvailable: bool,
+  YMileageCost: text,
+  WMileageCost: text,
+  JMileageCost: text,
+  FMileageCost: text,
   YMileageCostRaw: num.optional(),
   WMileageCostRaw: num.optional(),
   JMileageCostRaw: num.optional(),
@@ -53,18 +57,18 @@ const itemSchema = z.object({
   WAirlines: z.string().nullish(),
   JAirlines: z.string().nullish(),
   FAirlines: z.string().nullish(),
-  YDirect: z.boolean().optional(),
-  WDirect: z.boolean().optional(),
-  JDirect: z.boolean().optional(),
-  FDirect: z.boolean().optional(),
-  UpdatedAt: z.string().optional(),
+  YDirect: bool,
+  WDirect: bool,
+  JDirect: bool,
+  FDirect: bool,
+  UpdatedAt: z.string().nullish(),
 })
 
 const responseSchema = z.object({
   data: z.array(z.unknown()),
-  count: z.number().optional(),
-  hasMore: z.boolean().optional(),
-  cursor: z.number().nullish(),
+  count: z.number().nullish(),
+  hasMore: z.boolean().nullish(),
+  cursor: z.union([z.number(), z.string()]).nullish(),
 })
 
 export type SeatsAeroItem = z.infer<typeof itemSchema>
@@ -86,6 +90,20 @@ export interface CachedSearchResult {
   skippedMalformed: number
   /** More results exist than this single page returned. */
   truncated: boolean
+  /** For the usage log: why the first unreadable result was rejected, and what it looked like. */
+  firstIssue?: string
+  sample?: string
+}
+
+/** Counts worth recording with each request, so an empty-looking search can be explained. */
+export function searchDiagnostics(res: CachedSearchResult): Record<string, unknown> {
+  return {
+    returned: res.items.length + res.skippedMalformed,
+    unreadable: res.skippedMalformed,
+    sources: [...new Set(res.items.map((i) => i.Source))].slice(0, 12),
+    ...(res.firstIssue ? { firstIssue: res.firstIssue } : {}),
+    ...(res.sample ? { sample: res.sample } : {}),
+  }
 }
 
 const PAGE_SIZE = 500
@@ -108,17 +126,26 @@ export async function cachedSearch(apiKey: string, p: CachedSearchParams, fetchI
   const body = responseSchema.parse(await res.json())
   const items: SeatsAeroItem[] = []
   let skipped = 0
+  let firstIssue: string | undefined
+  let sample: string | undefined
   for (const raw of body.data) {
     const r = itemSchema.safeParse(raw)
     if (r.success) items.push(r.data)
-    else skipped++
+    else {
+      skipped++
+      if (!firstIssue) {
+        const i = r.error.issues[0]
+        firstIssue = i ? `${i.path.join('.') || 'item'}: ${i.message}` : 'unreadable'
+        sample = JSON.stringify(raw).slice(0, 600)
+      }
+    }
   }
-  return { items, requests: 1, skippedMalformed: skipped, truncated: body.hasMore === true || body.data.length >= PAGE_SIZE }
+  return { items, requests: 1, skippedMalformed: skipped, truncated: body.hasMore === true || body.data.length >= PAGE_SIZE, firstIssue, sample }
 }
 
 const PROGRAM_BY_SOURCE = Object.fromEntries(Object.entries(SEATS_AERO_PROGRAMS).map(([program, source]) => [source, program]))
 
-function parseMiles(raw: number | null | undefined, text: string | number | undefined): number | null {
+function parseMiles(raw: number | null | undefined, text: string | number | null | undefined): number | null {
   if (raw != null && raw > 0) return Math.round(raw)
   if (text == null) return null
   const n = Number(String(text).replace(/[^0-9.]/g, ''))

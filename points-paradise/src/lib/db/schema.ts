@@ -81,6 +81,8 @@ export const userSettings = pgTable('user_settings', {
   /** Daily seats.aero search from the home airports to popular and dream destinations. */
   discoveryEnabled: boolean('discovery_enabled').notNull().default(true),
   discoveryCabins: text('discovery_cabins').array().notNull().default(sql`'{business,first}'::text[]`),
+  /** Daily rooms.aero search for award nights at Chase hotel partners. */
+  hotelDiscoveryEnabled: boolean('hotel_discovery_enabled').notNull().default(true),
   updatedAt: updatedAt(),
 })
 

@@ -5,7 +5,7 @@ import { dataSources, searchHistory } from '../db/schema'
 import { CABINS, type Cabin } from '../domain/constants'
 import { withinQuota } from '../engine/budget'
 import { DISCOVERY_DESTINATIONS, dreamAirports, pickCheapest } from '../jobs/discovery'
-import { cachedSearch, itemToDealColumns, type CachedSearchResult } from '../providers/seats-aero'
+import { cachedSearch, itemToDealColumns, searchDiagnostics, type CachedSearchResult } from '../providers/seats-aero'
 import { loadAccount } from './account'
 import { upsertDeal } from './deals'
 import { dayStart, logJob, requestsSince } from './usage'
@@ -111,7 +111,7 @@ export async function runAwardSearch(db: AppDb, userId: string, apiKey: string, 
       await logJob(db, {
         provider: 'seats_aero',
         jobType: 'user_search',
-        params,
+        params: { ...params, ...searchDiagnostics(res) },
         status: 'succeeded',
         startedAt,
         requestCount: res.requests,

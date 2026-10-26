@@ -19,6 +19,7 @@ export async function runChecksNowAction(_prev: RunState): Promise<RunState> {
       `${s.notifications} new alert${s.notifications === 1 ? '' : 's'}`,
       `${s.watchChecks} watch check${s.watchChecks === 1 ? '' : 's'}`,
       s.discovered ? `${s.discovered} new award${s.discovered === 1 ? '' : 's'} discovered` : null,
+      s.hotels ? `${s.hotels} new hotel award${s.hotels === 1 ? '' : 's'}` : null,
       `${s.archived} archived`,
       s.enriched ? `${s.enriched} cash prices added` : null,
       s.announcements ? `${s.announcements} new announcements` : null,

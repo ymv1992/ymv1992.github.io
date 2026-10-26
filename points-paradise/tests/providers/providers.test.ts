@@ -3,7 +3,7 @@
  * responses. No network calls are made; these are not real fares or awards.
  */
 import { describe, expect, it } from 'vitest'
-import { cachedSearch, itemToDealColumns } from '@/lib/providers/seats-aero'
+import { cachedSearch, itemToDealColumns, searchDiagnostics } from '@/lib/providers/seats-aero'
 import { searchFlightPrice, searchHotelRate } from '@/lib/providers/serpapi'
 import { matchKeywords, parseFeed } from '@/lib/providers/rss'
 import { searchDestinationPhoto } from '@/lib/providers/unsplash'
@@ -55,6 +55,38 @@ describe('seats.aero adapter', () => {
     expect((seenInit?.headers as Record<string, string>)['Partner-Authorization']).toBe('key-123')
     expect(r.items).toHaveLength(3)
     expect(r.skippedMalformed).toBe(1)
+  })
+
+  it('reads results whose empty fields are null, and explains unreadable ones', async () => {
+    const body = {
+      data: [
+        {
+          ID: 987,
+          Route: { OriginAirport: 'LAX', DestinationAirport: 'NRT', Distance: null, Source: null },
+          Date: '2026-12-05',
+          Source: 'united',
+          YAvailable: false,
+          JAvailable: true,
+          YMileageCost: null,
+          JMileageCost: '70000',
+          JMileageCostRaw: 70000,
+          JTotalTaxes: 5600,
+          TaxesCurrency: null,
+          JAirlines: 'NH',
+          JDirect: null,
+          UpdatedAt: null,
+        },
+        { ID: 'broken', Date: '2026-12-06', Source: 'united' },
+      ],
+      count: 2,
+      hasMore: false,
+      cursor: null,
+    }
+    const r = await cachedSearch('k', { origins: ['LAX'], destinations: ['NRT'], cabin: 'business', startDate: '2026-12-01', endDate: '2026-12-31' }, fakeFetch(body))
+    expect(r.items).toHaveLength(1)
+    expect(itemToDealColumns(r.items[0]!, 'business')?.programPoints).toBe(70000)
+    expect(searchDiagnostics(r)).toMatchObject({ returned: 2, unreadable: 1, sources: ['united'], firstIssue: expect.stringMatching(/^Route/) })
+    expect(String(searchDiagnostics(r).sample)).toContain('broken')
   })
 
   it('maps available Chase-partner awards and skips the rest', async () => {

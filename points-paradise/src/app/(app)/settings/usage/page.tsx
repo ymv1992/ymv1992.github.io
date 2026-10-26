@@ -95,6 +95,7 @@ export default async function UsagePage() {
               <span>
                 <strong>{j.provider}</strong> · {j.jobType}{' '}
                 <Badge tone={j.status === 'succeeded' ? 'ok' : j.status === 'failed' ? 'danger' : 'warn'}>{j.status.replace(/_/g, ' ')}</Badge>
+                {(j.provider === 'seats_aero' || j.provider === 'rooms_aero') && j.status === 'succeeded' && <SearchCounts params={j.params} kept={j.resultsCount} />}
                 {j.error && <span className="block text-xs text-danger">{j.error}</span>}
               </span>
               <span className="tabular text-xs text-muted">
@@ -106,5 +107,20 @@ export default async function UsagePage() {
         </ul>
       </Card>
     </div>
+  )
+}
+
+/** What a seats.aero answer contained, so an empty-looking search can be explained. */
+function SearchCounts({ params, kept }: { params: Record<string, unknown>; kept: number }) {
+  if (typeof params.returned !== 'number') return null
+  const unreadable = typeof params.unreadable === 'number' ? params.unreadable : 0
+  const sources = Array.isArray(params.sources) ? params.sources.join(', ') : ''
+  return (
+    <span className="block text-xs text-muted">
+      {params.returned} returned{unreadable ? `, ${unreadable} unreadable` : ''} · {kept} kept
+      {sources ? ` · programs: ${sources}` : ''}
+      {typeof params.firstIssue === 'string' && <span className="block text-danger">Unreadable because: {params.firstIssue}</span>}
+      {typeof params.sample === 'string' && <code className="mt-1 block break-all rounded bg-surface-2 p-1.5 text-[11px]">{params.sample}</code>}
+    </span>
   )
 }

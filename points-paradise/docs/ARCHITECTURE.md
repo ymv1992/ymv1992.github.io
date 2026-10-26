@@ -102,7 +102,7 @@ automatic discovery capped at 100 of seats.aero's 1,000 included daily calls
 
 | Capability | Free setup | With paid add-ons |
 |---|---|---|
-| Deals | Manual entry, JSON/CSV import, RSS leads, demo data | + automatic daily discovery from your home airports and seats.aero availability on watched routes |
+| Deals | Manual entry, JSON/CSV import, RSS leads, demo data | + automatic daily discovery of award flights from your home airports and award nights at Hyatt, Marriott, IHG and Wyndham hotels (rooms.aero, same key), plus seats.aero availability on watched routes |
 | Value (CPP) | From cash prices you enter | + automatic comparable cash fares/rates (SerpApi beyond the free quota) |
 | Award calendar | Built from deals and observations you add | Filled automatically by watch checks |
 | Alerts | In-app, browser (while open) and email | Same, with more frequent automated watch checks |
@@ -118,6 +118,9 @@ automatic discovery capped at 100 of seats.aero's 1,000 included daily calls
   permission; about 1,000 calls/day; cached search only (Live Search is not
   included for Pro). Results are cached data and are labelled with their
   update time.
+- **rooms.aero** (seats.aero's hotel search): the same key and terms, with a
+  separate 1,000 calls/day. The app uses only the cached hotel search, never
+  the once-a-day hotel refresh.
 - **SerpApi**: a third-party search API with its own terms; review them
   before enabling. Results reflect Google at search time and are used only
   as comparable cash prices.

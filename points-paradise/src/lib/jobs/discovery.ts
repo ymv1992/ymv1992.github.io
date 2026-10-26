@@ -6,7 +6,7 @@ import { loadAccount } from '../data/account'
 import { upsertDeal } from '../data/deals'
 import { dayStart, logJob, requestsSince } from '../data/usage'
 import { getAirport, searchAirports } from '../geo/airports'
-import { cachedSearch, itemToDealColumns } from '../providers/seats-aero'
+import { cachedSearch, itemToDealColumns, searchDiagnostics } from '../providers/seats-aero'
 
 /**
  * Automatic award discovery: searches seats.aero's cached availability from
@@ -227,7 +227,7 @@ export async function runDiscovery(db: AppDb, userId: string, deps: DiscoveryDep
       await logJob(db, {
         provider: 'seats_aero',
         jobType: 'discovery',
-        params: { group: task.groupId, origins, destinations: task.airports, cabin: task.cabin, startDate, endDate, truncated: res.truncated },
+        params: { group: task.groupId, origins, destinations: task.airports, cabin: task.cabin, startDate, endDate, truncated: res.truncated, ...searchDiagnostics(res), matched: mapped.length },
         status: 'succeeded',
         startedAt,
         requestCount: res.requests,
