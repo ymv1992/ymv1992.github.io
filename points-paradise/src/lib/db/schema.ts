@@ -78,6 +78,9 @@ export const userSettings = pgTable('user_settings', {
   foodPerPersonPerDayUsd: doublePrecision('food_per_person_per_day_usd').notNull().default(100),
   travelers: integer('travelers').notNull().default(2),
   activeProfileId: uuid('active_profile_id'),
+  /** Daily seats.aero search from the home airports to popular and dream destinations. */
+  discoveryEnabled: boolean('discovery_enabled').notNull().default(true),
+  discoveryCabins: text('discovery_cabins').array().notNull().default(sql`'{business,first}'::text[]`),
   updatedAt: updatedAt(),
 })
 

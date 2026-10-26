@@ -22,7 +22,7 @@ function authorized(req: NextRequest): boolean {
 export async function GET(req: NextRequest, ctx: { params: Promise<{ job: string }> }) {
   if (!authorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { job } = await ctx.params
-  if (job !== 'daily' && job !== 'frequent') return NextResponse.json({ error: 'Unknown job' }, { status: 404 })
+  if (job !== 'daily' && job !== 'frequent' && job !== 'discover') return NextResponse.json({ error: 'Unknown job' }, { status: 404 })
   try {
     const summary = await runScheduled(job)
     return NextResponse.json({ ok: true, summary })

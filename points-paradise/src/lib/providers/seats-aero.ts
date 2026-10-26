@@ -84,7 +84,11 @@ export interface CachedSearchResult {
   items: SeatsAeroItem[]
   requests: number
   skippedMalformed: number
+  /** More results exist than this single page returned. */
+  truncated: boolean
 }
+
+const PAGE_SIZE = 500
 
 /** One cached search (single request, up to 500 results). Throws on HTTP errors. */
 export async function cachedSearch(apiKey: string, p: CachedSearchParams, fetchImpl: typeof fetch = fetch): Promise<CachedSearchResult> {
@@ -94,7 +98,7 @@ export async function cachedSearch(apiKey: string, p: CachedSearchParams, fetchI
     start_date: p.startDate,
     end_date: p.endDate,
     cabin: API_CABIN[p.cabin],
-    take: '500',
+    take: String(PAGE_SIZE),
   })
   const res = await fetchImpl(`${SEATS_AERO_BASE}/search?${qs}`, {
     headers: { 'Partner-Authorization': apiKey, accept: 'application/json' },
@@ -109,7 +113,7 @@ export async function cachedSearch(apiKey: string, p: CachedSearchParams, fetchI
     if (r.success) items.push(r.data)
     else skipped++
   }
-  return { items, requests: 1, skippedMalformed: skipped }
+  return { items, requests: 1, skippedMalformed: skipped, truncated: body.hasMore === true || body.data.length >= PAGE_SIZE }
 }
 
 const PROGRAM_BY_SOURCE = Object.fromEntries(Object.entries(SEATS_AERO_PROGRAMS).map(([program, source]) => [source, program]))

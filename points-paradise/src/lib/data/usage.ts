@@ -18,11 +18,11 @@ export async function monthSpendUsd(db: AppDb, now = new Date(), provider?: stri
   return Number(r?.total ?? 0)
 }
 
-export async function requestsSince(db: AppDb, provider: string, since: Date): Promise<number> {
+export async function requestsSince(db: AppDb, provider: string, since: Date, jobType?: string): Promise<number> {
   const [r] = await db
     .select({ n: sql<number>`coalesce(sum(${searchJobs.requestCount}), 0)::int` })
     .from(searchJobs)
-    .where(and(eq(searchJobs.provider, provider), gte(searchJobs.createdAt, since)))
+    .where(and(eq(searchJobs.provider, provider), gte(searchJobs.createdAt, since), jobType ? eq(searchJobs.jobType, jobType) : sql`true`))
   return Number(r?.n ?? 0)
 }
 

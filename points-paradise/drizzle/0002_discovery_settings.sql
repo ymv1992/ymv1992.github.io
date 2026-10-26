@@ -1,0 +1,2 @@
+ALTER TABLE "user_settings" ADD COLUMN "discovery_enabled" boolean DEFAULT true NOT NULL;--> statement-breakpoint
+ALTER TABLE "user_settings" ADD COLUMN "discovery_cabins" text[] DEFAULT '{business,first}'::text[] NOT NULL;

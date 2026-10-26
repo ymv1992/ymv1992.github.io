@@ -58,7 +58,13 @@ export function buildFeed(items: readonly EvaluatedDeal[], mode: FeedMode, opts:
     default:
       list = base
   }
-  return list.sort((a, b) => (evidenceTier(a.status) ?? 9) - (evidenceTier(b.status) ?? 9) || value(b) - value(a))
+  // Deals without a cash comparison yet (e.g. fresh discovery finds) follow, cheapest in points first.
+  return list.sort(
+    (a, b) =>
+      (evidenceTier(a.status) ?? 9) - (evidenceTier(b.status) ?? 9) ||
+      value(b) - value(a) ||
+      (a.valuation.chasePoints ?? Infinity) - (b.valuation.chasePoints ?? Infinity),
+  )
 }
 
 /** Overall Top-100 rank for each deal id (verified tiers first). */

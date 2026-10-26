@@ -86,21 +86,23 @@ these figures.
 | Announcements | Public RSS feeds | $0 |
 | Cash fares | SerpApi free allowance (small monthly quota) | $0 |
 | AI prose | Anthropic API, capped in-app (default $2/month) | $0–2 |
-| Award availability | seats.aero Pro (optional; about $10/month) | $0 or ~$10 |
+| Award availability | seats.aero Pro (optional; $9.99/month or $99.99/year in the US as reported Oct 2026; API calls included) | $0 or ~$10 |
 | **Total** | | **$0 baseline; about $10–12 with seats.aero and AI** |
 
 Cost controls built in: per-provider daily/monthly quotas from the data-source
 registry, a monthly paid-API cap (default $5) and a separate AI cap
 (default $2) that pause requests at 95% of the cap, response caching
 (12–24 h for searches, 30 days for photos, keyed caching for AI), a priority
-queue that spends scarce calls on saved deals and urgent deadlines first, and
-a usage dashboard at **Settings → Usage**.
+queue that spends scarce calls on saved deals and urgent deadlines first,
+automatic discovery capped at 100 of seats.aero's 1,000 included daily calls
+(with 200 always left for watches and searches), and a usage dashboard at
+**Settings → Usage**.
 
 ## 4. Free vs paid comparison
 
 | Capability | Free setup | With paid add-ons |
 |---|---|---|
-| Deals | Manual entry, JSON/CSV import, RSS leads, demo data | + seats.aero cached award availability on watched routes |
+| Deals | Manual entry, JSON/CSV import, RSS leads, demo data | + automatic daily discovery from your home airports and seats.aero availability on watched routes |
 | Value (CPP) | From cash prices you enter | + automatic comparable cash fares/rates (SerpApi beyond the free quota) |
 | Award calendar | Built from deals and observations you add | Filled automatically by watch checks |
 | Alerts | In-app, browser (while open) and email | Same, with more frequent automated watch checks |
@@ -218,8 +220,10 @@ grouped sidebar with every page.
 These are fully implemented but only as good as the data you feed them. With
 no provider keys, they work from manual entries and imports.
 
-- **Rankings and Discover** need deals with both a points price and a
-  comparable cash price.
+- **Discover** fills itself once seats.aero is configured (automatic
+  discovery). **Rankings** need deals with both a points price and a
+  comparable cash price; discovered awards get one from SerpApi (a few a
+  day on the free tier) or from you.
 - **Award calendar and predictions** need repeated observations of the same
   route or property; predictions are withheld until there is enough history
   and always show their evidence tier.

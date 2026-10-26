@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import {
+  CABINS,
+  CABIN_LABELS,
   CARD_TYPES,
   CATEGORY_DEFS,
   DATE_FLEXIBILITY,
@@ -13,7 +15,8 @@ import {
 import { getDb } from '@/lib/db/client'
 import { loadAccount } from '@/lib/data/account'
 import { listPartners } from '@/lib/data/transfers'
-import { usageSummary } from '@/lib/data/usage'
+import { dayStart, requestsSince, usageSummary } from '@/lib/data/usage'
+import { DISCOVERY_DAILY_CAP, DISCOVERY_DESTINATIONS } from '@/lib/jobs/discovery'
 import { integrationStatus } from '@/lib/server/config'
 import { requireUserId } from '@/lib/server/session'
 import { usd } from '@/lib/format'
@@ -23,6 +26,7 @@ import {
   deleteProfileAction,
   resetPersonalizationAction,
   saveBudgetsAction,
+  saveDiscoveryAction,
   saveNotificationSettingsAction,
   saveProfileAction,
   saveValuationAction,
@@ -47,6 +51,8 @@ export default async function SettingsPage() {
   const integrations = integrationStatus()
   const usage = await usageSummary(db)
   const monthSpend = usage.byProvider.reduce((s, p) => s + Number(p.cost), 0)
+  const discoveryToday = await requestsSince(db, 'seats_aero', dayStart(new Date()), 'discovery')
+  const destinationCount = DISCOVERY_DESTINATIONS.reduce((n, g) => n + g.airports.length, 0)
 
   return (
     <div className="space-y-8">
@@ -351,6 +357,36 @@ export default async function SettingsPage() {
             <input type="checkbox" name="demoMode" defaultChecked={settings.demoMode} /> Show demo data (fictional, always labelled DEMO, never ranked as bookable)
           </label>
         </ActionForm>
+        <div id="discovery" className="mb-6 scroll-mt-20 rounded-xl border border-line p-4">
+          <h3 className="font-semibold">Automatic discovery</h3>
+          <p className="mt-1 text-sm text-muted">
+            Once a day, looks up open award seats from your home airports ({profile.homeAirports.join(', ') || 'SAN, LAX, SNA, ONT, BUR'}) to {destinationCount} popular destinations and
+            any dream destinations it can match to an airport, across the Chase airline partners seats.aero covers. New finds appear in Discover.
+          </p>
+          <p className="mt-2 text-sm">
+            {integrations.seatsAero ? (
+              <>
+                Uses at most {DISCOVERY_DAILY_CAP} of the 1,000 daily lookups included in seats.aero Pro, so it adds no cost beyond the subscription. Used today:{' '}
+                <span className="tabular font-semibold">{discoveryToday}</span> of {DISCOVERY_DAILY_CAP}.
+              </>
+            ) : (
+              <>Needs a seats.aero Pro API key (see below). Until one is added, nothing is searched and nothing is charged.</>
+            )}
+          </p>
+          <ActionForm action={saveDiscoveryAction} submitLabel="Save discovery settings" className="mt-3 space-y-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="discoveryEnabled" defaultChecked={settings.discoveryEnabled} /> Search automatically every day
+            </label>
+            <fieldset className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+              <legend className="mb-1 text-muted">Cabins to look for</legend>
+              {CABINS.map((c) => (
+                <label key={c} className="flex items-center gap-2">
+                  <input type="checkbox" name="discoveryCabins" value={c} defaultChecked={settings.discoveryCabins.includes(c)} /> {CABIN_LABELS[c]}
+                </label>
+              ))}
+            </fieldset>
+          </ActionForm>
+        </div>
         <ul className="divide-y divide-line rounded-xl border border-line">
           {usage.sources.map((s) => {
             const configured =

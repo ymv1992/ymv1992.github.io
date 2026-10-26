@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { evaluateDeal } from '@/lib/engine/evaluate'
 import { rankDeals, unrankable } from '@/lib/engine/ranking'
+import { buildFeed } from '@/lib/view/feed'
 import { NOW, evalCtx, flightDeal, hotelDeal } from '../fixtures'
 
 const ctx = evalCtx()
@@ -81,5 +82,15 @@ describe('rankDeals', () => {
     expect(h.categories).toContain('within-budget')
     const tight = evaluateDeal(hotelDeal(), { ...ctx, pointsBalance: 100_000 })
     expect(tight.categories).not.toContain('within-budget')
+  })
+})
+
+describe('buildFeed', () => {
+  it('shows valued deals first, then finds without a cash price from fewest points', () => {
+    const valued = evaluateDeal(flightDeal({ id: 'valued', comparableCashUsd: 5_000 }), ctx)
+    const pricey = evaluateDeal(flightDeal({ id: 'no-cash-pricey', comparableCashUsd: null, programPoints: 110_000 }), ctx)
+    const cheap = evaluateDeal(flightDeal({ id: 'no-cash-cheap', comparableCashUsd: null, programPoints: 60_000 }), ctx)
+    const feed = buildFeed([pricey, cheap, valued], 'worldwide', { now: NOW, exclude: new Set() })
+    expect(feed.map((e) => e.deal.id)).toEqual(['valued', 'no-cash-cheap', 'no-cash-pricey'])
   })
 })

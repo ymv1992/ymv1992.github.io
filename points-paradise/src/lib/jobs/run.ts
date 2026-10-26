@@ -24,6 +24,7 @@ import { cachedSearch, itemToDealColumns } from '../providers/seats-aero'
 import { searchFlightPrice, searchHotelRate } from '../providers/serpapi'
 import { searchDestinationPhoto } from '../providers/unsplash'
 import { fetchFeed, matchKeywords } from '../providers/rss'
+import { DISCOVERY_METHOD, runDiscovery, type DiscoveryLimits } from './discovery'
 import { cpp as fmtCpp, points as fmtPoints } from '../format'
 
 export interface JobDeps {
@@ -35,13 +36,15 @@ export interface JobDeps {
   fetch: typeof fetch
 }
 
-export type JobMode = 'daily' | 'frequent' | 'manual'
+export type JobMode = 'daily' | 'frequent' | 'manual' | 'discover'
 
 export interface JobSummary {
   mode: JobMode
   archived: number
   notifications: number
   watchChecks: number
+  /** New deals found by automatic discovery. */
+  discovered: number
   enriched: number
   photos: number
   announcements: number
@@ -50,6 +53,14 @@ export interface JobSummary {
 }
 
 const DAY = 86_400_000
+
+/** seats.aero discovery calls per run; the daily cap in discovery.ts applies on top. */
+const DISCOVERY_LIMITS: Record<JobMode, DiscoveryLimits> = {
+  discover: { maxCalls: 30, timeBudgetMs: 40_000 },
+  manual: { maxCalls: 6, timeBudgetMs: 20_000 },
+  frequent: { maxCalls: 3, timeBudgetMs: 10_000 },
+  daily: { maxCalls: 0, timeBudgetMs: 0 },
+}
 
 async function getState<T>(db: AppDb, key: string): Promise<T | null> {
   const [row] = await db.select().from(appState).where(eq(appState.key, key))
@@ -72,15 +83,21 @@ async function source(db: AppDb, id: string) {
  */
 export async function runJobs(db: AppDb, deps: JobDeps, mode: JobMode, onlyUserId?: string): Promise<JobSummary> {
   const now = deps.now
-  const summary: JobSummary = { mode, archived: 0, notifications: 0, watchChecks: 0, enriched: 0, photos: 0, announcements: 0, skipped: [], errors: [] }
+  const summary: JobSummary = { mode, archived: 0, notifications: 0, watchChecks: 0, discovered: 0, enriched: 0, photos: 0, announcements: 0, skipped: [], errors: [] }
   const userRows = await db.select({ id: users.id }).from(users)
   const userIds = userRows.map((u) => u.id).filter((id) => !onlyUserId || id === onlyUserId)
+
+  if (mode === 'discover') {
+    for (const userId of userIds) await discover(db, deps, userId, mode, summary)
+    return summary
+  }
 
   summary.archived = (await archiveExpiredDeals(db, now)).length
 
   for (const userId of userIds) {
-    // Watch checks first so alerts below see fresh observations.
+    // Watch checks and discovery first so alerts below see fresh observations.
     await runWatchChecks(db, deps, userId, mode, summary)
+    if (DISCOVERY_LIMITS[mode].maxCalls > 0) await discover(db, deps, userId, mode, summary)
     if (mode !== 'frequent') await recomputeCachedMetrics(db, userId, now)
     if (mode !== 'frequent') {
       await enrichCashPrices(db, deps, userId, summary)
@@ -90,6 +107,13 @@ export async function runJobs(db: AppDb, deps: JobDeps, mode: JobMode, onlyUserI
   }
   if (mode !== 'frequent') await ingestRss(db, deps, summary)
   return summary
+}
+
+async function discover(db: AppDb, deps: JobDeps, userId: string, mode: JobMode, summary: JobSummary) {
+  const r = await runDiscovery(db, userId, { now: deps.now, apiKey: deps.keys.seatsAero, fetch: deps.fetch }, DISCOVERY_LIMITS[mode])
+  summary.discovered += r.newDeals
+  summary.skipped.push(...r.skipped)
+  summary.errors.push(...r.errors)
 }
 
 async function deliveryConfig(db: AppDb, deps: JobDeps, userId: string): Promise<{ cfg: DeliveryConfig; data: Awaited<ReturnType<typeof loadEvaluationData>> }> {
@@ -228,6 +252,15 @@ async function evaluateAlerts(db: AppDb, deps: JobDeps, userId: string, summary:
   const lastKey = `jobs:lastAlertRun:${userId}`
   const last = await getState<{ at: string }>(db, lastKey)
   const since = last ? new Date(last.at) : new Date(now.getTime() - DAY)
+  // Discovery can add many dates for one dream city at once; alert only on the cheapest per city.
+  const dreamPick = new Map<string, { id: string; points: number }>()
+  for (const e of data.items) {
+    if (e.deal.verificationMethod !== DISCOVERY_METHOD || e.deal.firstSeenAt <= since) continue
+    if (!e.match.reasons.some((r) => r.startsWith('Dream destination'))) continue
+    const points = e.valuation.chasePoints ?? Infinity
+    const cur = dreamPick.get(e.deal.destination.city)
+    if (!cur || points < cur.points) dreamPick.set(e.deal.destination.city, { id: e.deal.id, points })
+  }
   for (const e of data.items) {
     if (e.deal.sourceKind === 'demo' || e.deal.firstSeenAt <= since) continue
     if (e.status === 'expired' || e.status === 'unavailable') continue
@@ -258,7 +291,8 @@ async function evaluateAlerts(db: AppDb, deps: JobDeps, userId: string, summary:
         ),
       )
     }
-    if (e.match.reasons.some((r) => r.startsWith('Dream destination'))) {
+    const dreamAllowed = e.deal.verificationMethod !== DISCOVERY_METHOD || dreamPick.get(e.deal.destination.city)?.id === e.deal.id
+    if (dreamAllowed && e.match.reasons.some((r) => r.startsWith('Dream destination'))) {
       count(
         await notify(
           db,
