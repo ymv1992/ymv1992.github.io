@@ -1,72 +1,63 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { z } from 'zod'
 import { getDb } from '@/lib/db/client'
-import { CABINS } from '@/lib/domain/constants'
-import { dataSources, searchHistory } from '@/lib/db/schema'
-import { upsertDeal } from '@/lib/data/deals'
-import { dayStart, logJob, requestsSince } from '@/lib/data/usage'
-import { withinQuota } from '@/lib/engine/budget'
-import { cachedSearch, itemToDealColumns } from '@/lib/providers/seats-aero'
+import { awardSearchSchema, runAwardSearch, type AwardSearchResultRow } from '@/lib/data/award-search'
 import { config } from '@/lib/server/config'
 import { requireUserId } from '@/lib/server/session'
-import { eq } from 'drizzle-orm'
+
+export interface SearchValues {
+  origin: string
+  destination: string
+  cabin: string
+  startDate: string
+  endDate: string
+  includeHomeAirports: boolean
+}
 
 export interface SearchState {
   error: string | null
   ok?: string
+  results?: AwardSearchResultRow[]
+  /** What was submitted, so the form shows it again (React resets forms after an action). */
+  values?: SearchValues
+  attempt?: number
 }
 
-const iata = z.string().regex(/^[A-Z]{3}$/)
-
-/** User-requested award search (highest priority in the queue), within the provider's daily quota. */
-export async function searchAwardsAction(_prev: SearchState, fd: FormData): Promise<SearchState> {
+/** Owner-requested award search, within the provider's daily quota. An empty "To" searches anywhere. */
+export async function searchAwardsAction(prev: SearchState, fd: FormData): Promise<SearchState> {
   const userId = await requireUserId()
+  const values: SearchValues = {
+    origin: String(fd.get('origin') ?? '').trim().toUpperCase(),
+    destination: String(fd.get('destination') ?? '').trim().toUpperCase(),
+    cabin: String(fd.get('cabin') ?? ''),
+    startDate: String(fd.get('startDate') ?? ''),
+    endDate: String(fd.get('endDate') ?? ''),
+    includeHomeAirports: fd.get('includeHomeAirports') === 'on',
+  }
+  const echo = { values, attempt: (prev.attempt ?? 0) + 1 }
   const key = config.seatsAeroKey()
-  if (!key) return { error: 'Award search needs a seats.aero Pro API key (SEATS_AERO_API_KEY). Until then, add deals manually.' }
-  const parsed = z
-    .object({
-      origin: iata,
-      destination: iata,
-      cabin: z.enum(CABINS),
-      startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-      endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    })
-    .safeParse({
-      origin: String(fd.get('origin') ?? '').toUpperCase(),
-      destination: String(fd.get('destination') ?? '').toUpperCase(),
-      cabin: fd.get('cabin'),
-      startDate: fd.get('startDate'),
-      endDate: fd.get('endDate'),
-    })
-  if (!parsed.success) return { error: 'Enter two airport codes, a cabin and a date range.' }
-  const p = parsed.data
-  const db = await getDb()
-  const now = new Date()
-  const [src] = await db.select().from(dataSources).where(eq(dataSources.id, 'seats_aero'))
-  if (src && !src.enabled) return { error: 'seats.aero is disabled in data sources.' }
-  if (!withinQuota(await requestsSince(db, 'seats_aero', dayStart(now)), 1, src?.dailyQuota ?? 1000)) {
-    await logJob(db, { provider: 'seats_aero', jobType: 'user_search', params: p, status: 'skipped_quota', startedAt: now, error: 'Daily quota reached' })
-    return { error: 'Daily seats.aero request quota reached. Try again tomorrow.' }
+  if (!key) return { ...echo, error: 'Award search needs a seats.aero Pro API key (SEATS_AERO_API_KEY). Until then, add deals manually.' }
+  const parsed = awardSearchSchema.safeParse({
+    ...values,
+    destination: values.destination === '' || values.destination === 'ANY' ? null : values.destination,
+  })
+  if (!parsed.success) {
+    const i = parsed.error.issues[0]
+    return { ...echo, error: i?.path[0] === 'endDate' ? i.message : 'Enter a 3-letter "From" airport, a "To" airport or leave it empty for Anywhere, a cabin and dates.' }
   }
-  const startedAt = new Date()
-  try {
-    const res = await cachedSearch(key, { origins: [p.origin], destinations: [p.destination], cabin: p.cabin, startDate: p.startDate, endDate: p.endDate })
-    const mapped = res.items.map((i) => itemToDealColumns(i, p.cabin)).filter((x): x is NonNullable<typeof x> => x !== null)
-    let created = 0
-    for (const m of mapped) {
-      const { verifiedAt, ...cols } = m
-      const r = await upsertDeal(db, cols, { now, verified: true, verifiedAt: verifiedAt ?? now, historySource: 'seats_aero' })
-      if (r.isNew) created++
-    }
-    await logJob(db, { provider: 'seats_aero', jobType: 'user_search', params: p, status: 'succeeded', startedAt, requestCount: res.requests, estimatedCostUsd: src?.costPerRequestUsd ?? 0, resultsCount: mapped.length })
-    await db.insert(searchHistory).values({ userId, context: 'award_search', query: p })
-    revalidatePath('/', 'layout')
-    return { error: null, ok: `${mapped.length} award dates found via Chase partners (${created} new). Cash comparisons are added by the daily job when SerpApi is configured, or enter them yourself.` }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Search failed'
-    await logJob(db, { provider: 'seats_aero', jobType: 'user_search', params: p, status: 'failed', startedAt, requestCount: 1, error: message })
-    return { error: message }
-  }
+  const out = await runAwardSearch(await getDb(), userId, key, parsed.data)
+  if (!out.ok) return { ...echo, error: out.error }
+  revalidatePath('/', 'layout')
+  const where = out.anywhere ? 'across all destinations' : `to ${parsed.data.destination}`
+  const parts = [
+    out.total === 0
+      ? `No open award seats found ${where} for those dates.`
+      : `${out.total} award option${out.total === 1 ? '' : 's'} found ${where}${out.anywhere ? ' (cheapest date per city and month)' : ''}, cheapest first.`,
+    out.created ? `${out.created} new in Discover.` : null,
+    out.truncated ? 'Some searches hit the result limit — try a shorter date range for more.' : null,
+    out.failed ? `${out.failed} of ${out.requests} searches failed; see Settings → Usage.` : null,
+    out.total ? 'Values (¢/pt) appear once a cash price is added.' : null,
+  ].filter(Boolean)
+  return { ...echo, error: null, ok: parts.join(' '), results: out.results }
 }

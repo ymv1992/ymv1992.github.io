@@ -46,13 +46,18 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Sea
         title="Where could your points take you?"
         subtitle="Ranked by points efficiency. Swipe right to save, left to pass — passed deals stay recoverable."
         actions={
-          <div className="flex rounded-full border border-line bg-surface p-1" role="group" aria-label="View">
-            <Link href={href({ view: 'cards' })} aria-current={view === 'cards' ? 'true' : undefined} className={cx('flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm', view === 'cards' ? 'bg-primary text-primary-ink' : 'text-muted')}>
-              <Icon name="cards" className="size-4" /> Cards
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/calendar#search" className="flex items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 py-2 text-sm">
+              <Icon name="search" className="size-4" /> Search anywhere
             </Link>
-            <Link href={href({ view: 'list' })} aria-current={view === 'list' ? 'true' : undefined} className={cx('flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm', view === 'list' ? 'bg-primary text-primary-ink' : 'text-muted')}>
-              <Icon name="list" className="size-4" /> List
-            </Link>
+            <div className="flex rounded-full border border-line bg-surface p-1" role="group" aria-label="View">
+              <Link href={href({ view: 'cards' })} aria-current={view === 'cards' ? 'true' : undefined} className={cx('flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm', view === 'cards' ? 'bg-primary text-primary-ink' : 'text-muted')}>
+                <Icon name="cards" className="size-4" /> Cards
+              </Link>
+              <Link href={href({ view: 'list' })} aria-current={view === 'list' ? 'true' : undefined} className={cx('flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm', view === 'list' ? 'bg-primary text-primary-ink' : 'text-muted')}>
+                <Icon name="list" className="size-4" /> List
+              </Link>
+            </div>
           </div>
         }
       />
