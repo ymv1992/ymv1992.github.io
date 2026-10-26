@@ -146,18 +146,20 @@ DATABASE_URL='postgres://…' npm run db:migrate
 
 ### 3. Scheduled jobs
 
-There are two jobs, both at `/api/cron/<job>`:
+There are three jobs, all at `/api/cron/<job>`:
 
 | Job | What it does |
 |---|---|
-| `frequent` | Deadline reminders and due watch checks. |
-| `daily` | Everything in `frequent`, plus archiving expired deals, recomputing values, comparable-cash enrichment, photos, RSS ingest and the daily digest. |
+| `discover` | Automatic discovery: the next batch of seats.aero searches from your home airports (see [Automatic discovery](#automatic-discovery)). |
+| `frequent` | Deadline reminders, due watch checks and a small discovery batch. |
+| `daily` | Watch checks, deadline reminders, archiving expired deals, recomputing values, comparable-cash enrichment, photos, RSS ingest, alerts and the daily digest. |
 
-Both jobs require the header `Authorization: Bearer $CRON_SECRET`.
+All jobs require the header `Authorization: Bearer $CRON_SECRET`.
 
-- **Vercel Cron.** `vercel.json` runs `daily` once a day at 14:17 UTC
-  (7:17 AM Pacific in summer). Vercel adds the bearer header automatically
-  when `CRON_SECRET` is set. The Hobby plan allows one run per day.
+- **Vercel Cron.** `vercel.json` runs `discover` at 13:05 UTC and `daily`
+  at 14:17 UTC (6:05 and 7:17 AM Pacific in summer), so the morning alerts
+  see the newest finds. Vercel adds the bearer header automatically when
+  `CRON_SECRET` is set. The Hobby plan runs each job once a day.
 - **GitHub Actions (optional, also free).** `.github/workflows/points-paradise-cron.yml`
   runs `frequent` every hour and `daily` once a day. To turn it on:
   1. Add the repository **variable** `PP_CRON_ENABLED=true`.
@@ -172,6 +174,42 @@ To call a job by hand:
 ```bash
 curl -H "Authorization: Bearer $CRON_SECRET" https://your-app.vercel.app/api/cron/daily
 ```
+
+### Automatic discovery
+
+With `SEATS_AERO_API_KEY` set, the `discover` job searches seats.aero's
+cached award availability from your home airports to:
+
+- 58 popular award destinations in 10 regions: Japan and Korea, Southeast
+  Asia, Hawaii and the South Pacific, Australia and New Zealand, Europe, the
+  Middle East and Africa, Mexico and Costa Rica, and South America
+- up to 6 dream destinations from your profile that match an airport code
+  or exact city name
+
+Each search covers the cabins you pick in **Settings → Data sources →
+Automatic discovery** (business and first by default). It looks about 11
+months ahead, in three windows. For each destination city, cabin and month
+it keeps the cheapest date and refreshes dates it already showed. Seats that
+disappear move to **History** as "Award space disappeared".
+
+Cost stays at the seats.aero subscription:
+
+- Discovery uses at most 100 of the 1,000 daily calls included in Pro.
+- It always leaves 200 calls for watches and Award Calendar searches.
+- It stops at the daily limit instead of going over it.
+
+Calls are logged at **Settings → Usage** as `discovery`.
+
+A full cycle takes a few days with only the daily Vercel job. Enabling the
+optional hourly GitHub Actions job, or tapping **Alerts → Run checks now**,
+speeds it up.
+
+Discovered awards don't have a cash price at first. Discover lists them by
+fewest points until a comparable cash price is added: you add it yourself,
+or SerpApi adds a few a day on its free tier. After that they appear in
+Top 100 with a cents-per-point value. seats.aero covers only some Chase
+partners (United, Air Canada Aeroplan, Air France/KLM Flying Blue and Virgin
+Atlantic in this app), and hotel awards stay manual.
 
 ### GitHub Pages note
 
@@ -190,7 +228,7 @@ restrictions are summarized at **Settings → Data sources** and in
 
 | Provider | How to enable | What you get |
 |---|---|---|
-| **seats.aero** | Subscribe to Pro (about $10/month) and create an API key. Set `SEATS_AERO_API_KEY`. | Cached award availability on your route watches, plus award search on the Award Calendar. Personal, non-commercial use only. Limit is 1,000 calls per day. |
+| **seats.aero** | Subscribe to Pro ($9.99/month or $99.99/year in the US, as reported in October 2026) and create an API key. Set `SEATS_AERO_API_KEY`. | Automatic discovery for Discover and Top 100, cached award availability on your route watches, and award search on the Award Calendar. API calls are included in Pro (1,000 per day). Personal, non-commercial use only. |
 | **SerpApi** | Create an account and set `SERPAPI_API_KEY`. | Comparable cash fares (Google Flights) and hotel rates (Google Hotels), used to value deals that have no cash price yet. Uses the free monthly allowance first. |
 | **Resend** | Verify a sending domain or address. Set `RESEND_API_KEY` and `EMAIL_FROM`, then turn on email in Settings. | Instant alerts and the daily digest by email. |
 | **Anthropic** | Create an API key and set `ANTHROPIC_API_KEY`. | AI-written deal explanations, destination ideas and trip narratives. The AI receives computed facts only and never generates prices or availability. |
@@ -221,7 +259,7 @@ SESSION_SECRET=any-32-character-placeholder-value npm run build
 |---|---|
 | `tests/engine/*` | CPP and practical value, comparability refusals, transfer math (ratios, card overrides, bonuses, increments, minimums, rounding), ranking and evidence tiers, deadlines and reminders (including DST), staleness, personalization, positioning, budgets, priority queue, alert decisions, trip building, trip-request parsing. |
 | `tests/db/*` | Runs against in-memory PGlite. Reference seeds, account bootstrap, manual-deal validation and dedupe, price history, archiving, saved snapshots, collection ownership, undo, notification dedupe, demo labelling and removal. |
-| `tests/jobs/*` | Reminders sent once, seats.aero watch checks, quota exhaustion, a missing key reported rather than crashing, RSS ingest. |
+| `tests/jobs/*` | Reminders sent once, seats.aero watch checks, quota exhaustion, a missing key reported rather than crashing, RSS ingest, automatic discovery (search parameters, cheapest-date selection, vanished seats moved to History, daily cap and quota reserve, on/off switch, one dream alert per city). |
 | `tests/providers/*` | Adapters run against recorded response fixtures. |
 
 `tests/fixtures.ts` holds the test fixtures. They are separate from the
@@ -267,6 +305,10 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
 - **Alerts.** Alert preferences, dedupe, quiet hours, the daily digest, and
   reminders at 7 days, 3 days, 24 hours, 6 hours and 1 hour. Delivered in
   the app, by browser notification while the app is open, and by email.
+- **Automatic discovery.** With a seats.aero key, a daily search from your
+  home airports to 58 popular destinations plus your dream destinations
+  fills Discover and Top 100 on its own. It can be switched off or limited
+  to certain cabins in Settings.
 - **History.** Archive of missed and expired deals, with "watch for similar".
 - **Award Calendar.** Heatmap, price-history chart, seasonal table and
   predictions marked with their evidence tier. Predictions are withheld when

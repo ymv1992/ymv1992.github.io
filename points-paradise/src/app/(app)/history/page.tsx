@@ -27,6 +27,8 @@ const REASONS: Record<string, string> = {
   archived_by_owner: 'Archived by you',
 }
 
+const MISSED_LIMIT = 200
+
 export default async function HistoryPage({ searchParams }: { searchParams: Promise<{ tab?: string; q?: string }> }) {
   const sp = await searchParams
   const tab = TABS.some((t) => t.id === sp.tab) ? sp.tab! : 'missed'
@@ -66,6 +68,7 @@ function Missed({ items, active, q, now }: { items: Data['items']; active: Data[
     .filter((i) => i.deal.archivedAt || i.status === 'expired' || i.status === 'unavailable')
     .filter((i) => !q || `${i.deal.destination.city} ${i.deal.destination.country} ${i.deal.providerName}`.toLowerCase().includes(q))
     .sort((a, b) => (b.deal.archivedAt?.getTime() ?? b.deal.lastSeenAt.getTime()) - (a.deal.archivedAt?.getTime() ?? a.deal.lastSeenAt.getTime()))
+  const shown = archived.slice(0, MISSED_LIMIT)
   const seenCount = new Map<string, number>()
   for (const i of items) {
     const k = `${i.deal.destination.city}|${i.deal.kind}|${i.deal.programId}`
@@ -87,7 +90,7 @@ function Missed({ items, active, q, now }: { items: Data['items']; active: Data[
         <p className="rounded-2xl border border-dashed border-line px-4 py-10 text-center text-sm text-muted">Nothing in the archive{q ? ' matches that search' : ' yet'}.</p>
       ) : (
         <ul className="space-y-3">
-          {archived.map((i) => {
+          {shown.map((i) => {
             const d = i.deal
             const similar = active.filter((a) => a.deal.destination.city === d.destination.city && a.deal.kind === d.kind && (a.deal.sourceKind === 'demo') === (d.sourceKind === 'demo'))
             const times = seenCount.get(`${d.destination.city}|${d.kind}|${d.programId}`) ?? 1
@@ -145,6 +148,11 @@ function Missed({ items, active, q, now }: { items: Data['items']; active: Data[
             )
           })}
         </ul>
+      )}
+      {archived.length > shown.length && (
+        <p className="mt-3 text-sm text-muted">
+          Showing the {shown.length} most recent of {archived.length}. Search to find older ones.
+        </p>
       )}
     </div>
   )

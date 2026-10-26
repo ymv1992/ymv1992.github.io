@@ -10,7 +10,7 @@ import { removeDemoData, seedDemoData } from '@/lib/db/seed-demo'
 import { loadAccount, setActiveProfile } from '@/lib/data/account'
 import { resetPersonalization } from '@/lib/data/feedback'
 import { deleteUserData } from '@/lib/data/privacy'
-import { CARD_TYPE_IDS, CATEGORY_DEFS, DATE_FLEXIBILITY, DEAL_BREAKERS, TRAVEL_TAGS } from '@/lib/domain/constants'
+import { CABINS, CARD_TYPE_IDS, CATEGORY_DEFS, DATE_FLEXIBILITY, DEAL_BREAKERS, TRAVEL_TAGS } from '@/lib/domain/constants'
 import { getAirport } from '@/lib/geo/airports'
 import { isValidTimeZone } from '@/lib/time'
 import { endSession, requireUserId } from '@/lib/server/session'
@@ -220,6 +220,18 @@ export async function setDemoModeAction(_prev: FormState, fd: FormData): Promise
   else await removeDemoData(db)
   revalidatePath('/', 'layout')
   return { error: null, ok: on ? 'Demo data added. Every demo record is labelled DEMO.' : 'Demo data removed.' }
+}
+
+export async function saveDiscoveryAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const userId = await requireUserId()
+  const enabled = bool(fd.get('discoveryEnabled'))
+  const cabins = fd.getAll('discoveryCabins').map(String)
+  const parsed = z.array(z.enum(CABINS)).safeParse(cabins)
+  if (!parsed.success) return { error: firstIssue(parsed.error) }
+  if (enabled && parsed.data.length === 0) return { error: 'Choose at least one cabin, or turn discovery off.' }
+  await (await getDb()).update(userSettings).set({ discoveryEnabled: enabled, discoveryCabins: parsed.data, updatedAt: new Date() }).where(eq(userSettings.userId, userId))
+  revalidatePath('/settings')
+  return { error: null, ok: enabled ? 'Discovery settings saved.' : 'Automatic discovery turned off.' }
 }
 
 export async function resetPersonalizationAction(_prev: FormState): Promise<FormState> {
