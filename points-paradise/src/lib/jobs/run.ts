@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull, sql } from 'drizzle-orm'
+import { and, eq, gt, isNull, lte } from 'drizzle-orm'
 import type { AppDb } from '../db/client'
 import { announcements, appState, dataSources, deals, mediaCache, transferPromotions, users, watchlists } from '../db/schema'
 import { REMINDER_OFFSETS, type ReminderOffsetId } from '../domain/constants'
@@ -226,7 +226,7 @@ async function evaluateAlerts(db: AppDb, deps: JobDeps, userId: string, summary:
   const ending = await db
     .select()
     .from(transferPromotions)
-    .where(and(gt(transferPromotions.endsAt, now), sql`${transferPromotions.endsAt} <= ${new Date(now.getTime() + 3 * DAY)}`))
+    .where(and(gt(transferPromotions.endsAt, now), lte(transferPromotions.endsAt, new Date(now.getTime() + 3 * DAY))))
   for (const p of ending) {
     const partner = data.partners.get(p.partnerId)
     count(

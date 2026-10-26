@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
-import { createPgliteDb, type AppDb } from '@/lib/db/client'
+import type { AppDb } from '@/lib/db/client'
+import { createTestDb } from '../test-db'
 import { deals, notifications, transferPartners } from '@/lib/db/schema'
 import { ensureOwnerAccount, loadAccount } from '@/lib/data/account'
 import { manualDealSchema } from '@/lib/data/deal-input'
@@ -32,7 +33,7 @@ const baseInput = {
 }
 
 beforeAll(async () => {
-  db = await createPgliteDb()
+  db = await createTestDb()
   userId = await ensureOwnerAccount(db, 'Owner@Example.com')
 }, 60_000)
 
