@@ -1,7 +1,8 @@
 /** Automatic discovery tests with an in-memory database and fake seats.aero responses (TEST FIXTURES). */
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { and, eq } from 'drizzle-orm'
-import { createPgliteDb, type AppDb } from '@/lib/db/client'
+import type { AppDb } from '@/lib/db/client'
+import { createTestDb } from '../test-db'
 import { appState, deals, notifications, searchJobs, travelProfiles, userSettings } from '@/lib/db/schema'
 import { ensureOwnerAccount } from '@/lib/data/account'
 import { DISCOVERY_DAILY_CAP, DISCOVERY_METHOD, discoveryTasks, dreamAirports, pickCheapest, runDiscovery } from '@/lib/jobs/discovery'
@@ -42,7 +43,7 @@ async function resetCursor() {
 }
 
 beforeAll(async () => {
-  db = await createPgliteDb()
+  db = await createTestDb()
   userId = await ensureOwnerAccount(db, 'owner@example.com')
   const [s] = await db.select().from(userSettings).where(eq(userSettings.userId, userId))
   await db

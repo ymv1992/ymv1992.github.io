@@ -1,7 +1,8 @@
 /** Job runner tests with an in-memory database and fake provider responses (TEST FIXTURES). */
 import { beforeAll, describe, expect, it } from 'vitest'
 import { and, eq } from 'drizzle-orm'
-import { createPgliteDb, type AppDb } from '@/lib/db/client'
+import type { AppDb } from '@/lib/db/client'
+import { createTestDb } from '../test-db'
 import { announcements, dataSources, deals, notifications, searchJobs, userSettings, watchlists } from '@/lib/db/schema'
 import { ensureOwnerAccount } from '@/lib/data/account'
 import { manualDealSchema } from '@/lib/data/deal-input'
@@ -30,7 +31,7 @@ function deps(overrides: Partial<JobDeps> = {}): JobDeps {
 }
 
 beforeAll(async () => {
-  db = await createPgliteDb()
+  db = await createTestDb()
   userId = await ensureOwnerAccount(db, 'owner@example.com')
   // No quiet hours in tests; email on.
   const [s] = await db.select().from(userSettings).where(eq(userSettings.userId, userId))

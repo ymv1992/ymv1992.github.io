@@ -262,6 +262,15 @@ SESSION_SECRET=any-32-character-placeholder-value npm run build
 | `tests/jobs/*` | Reminders sent once, seats.aero watch checks, quota exhaustion, a missing key reported rather than crashing, RSS ingest, automatic discovery (search parameters, cheapest-date selection, vanished seats moved to History, daily cap and quota reserve, on/off switch, one dream alert per city). |
 | `tests/providers/*` | Adapters run against recorded response fixtures. |
 
+Database and job tests use in-memory PGlite by default. To run them against a
+real Postgres server through the same driver production uses, point
+`TEST_DATABASE_URL` at a server where you can create databases (each test
+file gets its own new database). CI does this on every change:
+
+```bash
+TEST_DATABASE_URL=postgres://postgres@127.0.0.1:5432/postgres npx vitest run tests/db tests/jobs
+```
+
 `tests/fixtures.ts` holds the test fixtures. They are separate from the
 demo seed and from production data.
 
