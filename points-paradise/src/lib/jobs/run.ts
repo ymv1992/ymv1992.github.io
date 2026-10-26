@@ -20,7 +20,7 @@ import {
 } from '../data/notifications'
 import { listSaved, refreshSavedSnapshot } from '../data/saved'
 import { dayStart, logJob, monthSpendUsd, monthStart, requestsSince } from '../data/usage'
-import { cachedSearch, itemToDealColumns } from '../providers/seats-aero'
+import { cachedSearch, itemToDealColumns, searchDiagnostics } from '../providers/seats-aero'
 import { searchFlightPrice, searchHotelRate } from '../providers/serpapi'
 import { searchDestinationPhoto } from '../providers/unsplash'
 import { fetchFeed, matchKeywords } from '../providers/rss'
@@ -427,7 +427,7 @@ async function runWatchChecks(db: AppDb, deps: JobDeps, userId: string, mode: Jo
       await logJob(db, {
         provider: 'seats_aero',
         jobType: 'watch_check',
-        params: { watchId: w.id, origins: w.origins, destinations: w.destinations, cabin, startDate, endDate },
+        params: { watchId: w.id, origins: w.origins, destinations: w.destinations, cabin, startDate, endDate, ...searchDiagnostics(res) },
         status: 'succeeded',
         startedAt,
         requestCount: res.requests,
