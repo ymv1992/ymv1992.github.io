@@ -25,6 +25,11 @@ const PRICES: Record<string, [number, number]> = {
   'claude-haiku-5-5': [0.1, 0.5],
 }
 
+/** Server-side fallback exists for Opus/Sonnet; Haiku has none, so the option is left off there. */
+function fallbackOptions(model: string): { betas?: ['server-side-fallback-2026-07-01']; fallbacks?: 'default' } {
+  return model.startsWith('claude-haiku') ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }
+}
+
 function costUsd(model: string, input: number, output: number): number {
   const [i, o] = PRICES[model] ?? PRICES['claude-opus-5-5']!
   return (input * i + output * o) / 1_000_000
@@ -87,8 +92,7 @@ async function callText(opts: CallOptions, prompt: string, maxTokens: number): P
     const res = await client.beta.messages.create({
       model,
       max_tokens: maxTokens,
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
+      ...fallbackOptions(model),
       output_config: { effort: 'low' },
       system: SYSTEM,
       messages: [{ role: 'user', content: prompt }],
@@ -160,8 +164,7 @@ export async function destinationIdeas(opts: CallOptions, profile: Record<string
     const res = await client.beta.messages.parse({
       model,
       max_tokens: maxTokens,
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
+      ...fallbackOptions(model),
       output_config: { effort: 'low', format: betaZodOutputFormat(ideaSchema) },
       system: SYSTEM,
       messages: [
