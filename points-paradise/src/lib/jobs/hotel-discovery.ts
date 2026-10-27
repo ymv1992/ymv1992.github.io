@@ -63,6 +63,8 @@ export const HOTELS_PER_PLACE = 6
 const STALE_DAYS = 10
 const AHEAD_DAYS = 330
 const CURSOR_KEY = 'hotels:cursor'
+/** Places searched at the same time. */
+const PARALLEL = 4
 const DAY = 86_400_000
 
 export interface HotelDiscoveryOutcome {
@@ -85,7 +87,17 @@ export function hotelPlaces(dreams: readonly string[]): HotelPlace[] {
     if (listed.some((l) => l.includes(key)) || extra.some((e) => e.label.toLowerCase() === key)) continue
     extra.push({ label: d, region: 'north_america', tags: [] })
   }
-  return [...extra.slice(0, 6), ...HOTEL_PLACES]
+  return [...extra.slice(0, 6), ...interleaveByRegion(HOTEL_PLACES)]
+}
+
+/** Alternates regions (Tokyo, Maldives, Maui, Fiji, Sydney, Paris, …) so every batch spans the world. */
+export function interleaveByRegion(places: readonly HotelPlace[]): HotelPlace[] {
+  const byRegion = new Map<string, HotelPlace[]>()
+  for (const p of places) byRegion.set(p.region, [...(byRegion.get(p.region) ?? []), p])
+  const queues = [...byRegion.values()]
+  const out: HotelPlace[] = []
+  for (let i = 0; out.length < places.length; i++) for (const q of queues) if (q[i]) out.push(q[i]!)
+  return out
 }
 
 /** Best value first (cents per point), then fewest points. */
@@ -143,16 +155,16 @@ export async function runHotelDiscovery(
   const sources = Object.values(ROOMS_PROGRAMS)
 
   const [cursorRow] = await db.select().from(appState).where(eq(appState.key, CURSOR_KEY))
-  let cursor = Number((cursorRow?.value as { next?: number } | undefined)?.next ?? 0) % places.length
+  const first = Number((cursorRow?.value as { next?: number } | undefined)?.next ?? 0) % places.length
+  const queue = Array.from({ length: allowed }, (_, i) => places[(first + i) % places.length]!)
   const started = Date.now()
+  let searched = 0
+  let authFailed = false
 
-  for (let i = 0; i < allowed; i++) {
-    if (Date.now() - started > limits.timeBudgetMs) break
-    const place = places[cursor]!
-    cursor = (cursor + 1) % places.length
+  const searchPlace = async (place: HotelPlace) => {
     const startedAt = new Date()
     try {
-      const res = await hotelSearch(deps.apiKey, { location: place.label, startDate, endDate, nights, sources }, deps.fetch)
+      const res = await hotelSearch(deps.apiKey!, { location: place.label, startDate, endDate, nights, sources }, deps.fetch)
       out.calls += res.requests
       const kept = pickHotels(res.rows).flatMap((row) => hotelRowToDeals(row, place, nights, HOTEL_METHOD))
       await inBatches(kept, 3, async (d) => {
@@ -185,9 +197,17 @@ export async function runHotelDiscovery(
       out.calls += 1
       out.errors.push(`hotels ${place.label}: ${message}`)
       await logJob(db, { provider: 'rooms_aero', jobType: 'hotel_discovery', params: { place: place.label }, status: 'failed', startedAt, requestCount: 1, error: message })
-      if (/\b(401|403)\b/.test(message)) break
+      if (/\b(401|403)\b/.test(message)) authFailed = true
     }
   }
+
+  for (let i = 0; i < queue.length && !authFailed; i += PARALLEL) {
+    if (Date.now() - started > limits.timeBudgetMs) break
+    const batch = queue.slice(i, i + PARALLEL)
+    await Promise.all(batch.map(searchPlace))
+    searched += batch.length
+  }
+  const cursor = (first + searched) % places.length
 
   await db
     .insert(appState)
