@@ -132,7 +132,9 @@ describe('runDiscovery', () => {
     const calls: string[] = []
     await runDiscovery(db, userId, { now: NOW, apiKey: 'k', fetch: respond([], calls) }, LIMITS)
     await runDiscovery(db, userId, { now: NOW, apiKey: 'k', fetch: respond([], calls) }, LIMITS)
-    expect(calls.map((c) => new URL(c).searchParams.get('cabin'))).toEqual(['business', 'first'])
+    // One cabin across all regions first: Japan/Korea, then Western Europe.
+    expect(calls.map((c) => new URL(c).searchParams.get('cabin'))).toEqual(['business', 'business'])
+    expect(calls.map((c) => new URL(c).searchParams.get('destination_airport')?.split(',')[0])).toEqual(['NRT', 'LHR'])
   })
 
   it('stops at the daily cap', async () => {

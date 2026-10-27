@@ -83,6 +83,13 @@ describe('hotelRowToDeals', () => {
     expect(d?.missingInfo).toContain('Comparable cash price')
   })
 
+  it('alternates regions so every batch spans the world', () => {
+    const order = hotelPlaces([])
+    expect(order).toHaveLength(HOTEL_PLACES.length)
+    expect(new Set(order.slice(0, 8).map((p) => p.region)).size).toBe(8)
+    expect(order.slice(0, 4).map((p) => p.label)).toEqual(['Tokyo, Japan', 'Maldives', 'Maui, Hawaii', 'Fiji'])
+  })
+
   it('adds dream destinations not already covered', () => {
     const places = hotelPlaces(['Tokyo', 'Patagonia', ''])
     expect(places[0]?.label).toBe('Patagonia')
@@ -134,6 +141,17 @@ describe('runHotelDiscovery', () => {
     expect(live).toHaveLength(0)
   })
 
+  it('searches several places at once in one run', async () => {
+    const calls: Request[] = []
+    const r = await runHotelDiscovery(db, userId, { now: NOW, apiKey: 'k', fetch: respond([], calls) }, { maxCalls: 8, timeBudgetMs: 60_000 })
+    expect(r.calls).toBe(8)
+    expect(new Set(calls.map((c) => new URL(c.url).searchParams.get('location'))).size).toBe(8)
+    // The next run continues where this one stopped.
+    const next: Request[] = []
+    await runHotelDiscovery(db, userId, { now: NOW, apiKey: 'k', fetch: respond([], next) }, LIMITS)
+    expect(new URL(next[0]!.url).searchParams.get('location')).toBe(hotelPlaces([])[8]!.label)
+  })
+
   it('treats an unknown place as an empty answer, not a failure', async () => {
     const r = await runHotelDiscovery(db, userId, { now: NOW, apiKey: 'k', fetch: respond([], [], 400) }, LIMITS)
     expect(r.errors).toEqual([])
@@ -146,7 +164,7 @@ describe('runHotelDiscovery', () => {
     const calls: Request[] = []
     await runHotelDiscovery(db, userId, { now: NOW, apiKey: 'k', fetch: respond([], calls) }, LIMITS)
     await runHotelDiscovery(db, userId, { now: NOW, apiKey: 'k', fetch: respond([], calls) }, LIMITS)
-    expect(calls.map((c) => new URL(c.url).searchParams.get('location'))).toEqual(['Tokyo, Japan', 'Kyoto, Japan'])
+    expect(calls.map((c) => new URL(c.url).searchParams.get('location'))).toEqual(['Tokyo, Japan', 'Maldives'])
     await db.insert(searchJobs).values({ provider: 'rooms_aero', jobType: 'hotel_discovery', status: 'succeeded', requestCount: HOTEL_DAILY_CAP, startedAt: NOW, createdAt: NOW })
     const capped = await runHotelDiscovery(db, userId, { now: NOW, apiKey: 'k', fetch: respond([], calls) }, LIMITS)
     expect(calls).toHaveLength(2)

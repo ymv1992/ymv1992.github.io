@@ -18,17 +18,18 @@ import { cachedSearch, itemToDealColumns, searchDiagnostics } from '../providers
  * manual searches, so it never adds cost beyond the subscription.
  */
 
+/** Ordered so consecutive searches alternate between regions of the world. */
 export const DISCOVERY_DESTINATIONS: { id: string; label: string; airports: string[] }[] = [
   { id: 'east-asia', label: 'Japan, Korea, Taiwan, Hong Kong', airports: ['NRT', 'HND', 'KIX', 'ICN', 'TPE', 'HKG'] },
-  { id: 'southeast-asia', label: 'Southeast Asia', airports: ['SIN', 'BKK', 'DPS', 'MNL', 'SGN', 'KUL'] },
-  { id: 'pacific-islands', label: 'Hawaii, Fiji, Tahiti', airports: ['HNL', 'OGG', 'KOA', 'LIH', 'NAN', 'PPT'] },
-  { id: 'oceania', label: 'Australia and New Zealand', airports: ['SYD', 'MEL', 'BNE', 'AKL'] },
   { id: 'western-europe', label: 'Western Europe', airports: ['LHR', 'CDG', 'AMS', 'FRA', 'MUC', 'ZRH'] },
-  { id: 'southern-europe', label: 'Southern Europe', airports: ['FCO', 'MXP', 'BCN', 'MAD', 'LIS', 'ATH'] },
-  { id: 'northern-europe', label: 'Ireland, Iceland, Scandinavia, Central Europe', airports: ['DUB', 'EDI', 'KEF', 'CPH', 'VIE', 'PRG'] },
-  { id: 'middle-east-africa', label: 'Middle East, Africa, Maldives', airports: ['DXB', 'DOH', 'IST', 'CPT', 'JNB', 'MLE'] },
+  { id: 'pacific-islands', label: 'Hawaii, Fiji, Tahiti', airports: ['HNL', 'OGG', 'KOA', 'LIH', 'NAN', 'PPT'] },
   { id: 'mexico-central-america', label: 'Mexico and Costa Rica', airports: ['CUN', 'SJD', 'MEX', 'PVR', 'LIR', 'SJO'] },
+  { id: 'southeast-asia', label: 'Southeast Asia', airports: ['SIN', 'BKK', 'DPS', 'MNL', 'SGN', 'KUL'] },
+  { id: 'southern-europe', label: 'Southern Europe', airports: ['FCO', 'MXP', 'BCN', 'MAD', 'LIS', 'ATH'] },
+  { id: 'middle-east-africa', label: 'Middle East, Africa, Maldives', airports: ['DXB', 'DOH', 'IST', 'CPT', 'JNB', 'MLE'] },
+  { id: 'oceania', label: 'Australia and New Zealand', airports: ['SYD', 'MEL', 'BNE', 'AKL'] },
   { id: 'south-america', label: 'South America', airports: ['LIM', 'SCL', 'EZE', 'GRU', 'GIG', 'BOG'] },
+  { id: 'northern-europe', label: 'Ireland, Iceland, Scandinavia, Central Europe', airports: ['DUB', 'EDI', 'KEF', 'CPH', 'VIE', 'PRG'] },
 ]
 
 const DEFAULT_ORIGINS = ['SAN', 'LAX', 'SNA', 'ONT', 'BUR']
@@ -86,12 +87,16 @@ export function dreamAirports(dreams: readonly string[]): string[] {
   return out.slice(0, 6)
 }
 
-/** Every search in one full cycle, dream destinations first. */
+/**
+ * Every search in one full cycle, dream destinations first. Within each date
+ * window it covers every destination in one cabin before the next cabin, so
+ * each batch reaches several parts of the world.
+ */
 export function discoveryTasks(cabins: readonly Cabin[], dreams: readonly string[]): DiscoveryTask[] {
   const groups = [...(dreams.length ? [{ id: 'dreams', airports: [...dreams] }] : []), ...DISCOVERY_DESTINATIONS]
   const tasks: DiscoveryTask[] = []
   for (let window = 0; window < WINDOWS; window++) {
-    for (const g of groups) for (const cabin of cabins) tasks.push({ groupId: g.id, airports: g.airports, cabin, window })
+    for (const cabin of cabins) for (const g of groups) tasks.push({ groupId: g.id, airports: g.airports, cabin, window })
   }
   return tasks
 }

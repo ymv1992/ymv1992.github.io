@@ -68,9 +68,9 @@ const DISCOVERY_LIMITS: Record<JobMode, DiscoveryLimits> = {
 
 /** rooms.aero hotel searches per run; the daily cap in hotel-discovery.ts applies on top. */
 const HOTEL_LIMITS: Record<JobMode, DiscoveryLimits> = {
-  discover: { maxCalls: 12, timeBudgetMs: 18_000 },
-  manual: { maxCalls: 4, timeBudgetMs: 10_000 },
-  frequent: { maxCalls: 2, timeBudgetMs: 6_000 },
+  discover: { maxCalls: 16, timeBudgetMs: 18_000 },
+  manual: { maxCalls: 8, timeBudgetMs: 12_000 },
+  frequent: { maxCalls: 4, timeBudgetMs: 6_000 },
   daily: { maxCalls: 0, timeBudgetMs: 0 },
 }
 
