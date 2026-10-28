@@ -63,6 +63,7 @@ export const cashProductSchema = z.object({
   date: z.string().nullish(),
   stops: z.number().int().min(0).max(6).nullish(),
   refundable: z.boolean().nullish(),
+  mixedCabin: z.boolean().nullish(),
   property: z.string().max(200).nullish(),
   roomType: z.enum(ROOM_TYPES).nullish(),
   guests: z.number().int().min(1).max(12).nullish(),

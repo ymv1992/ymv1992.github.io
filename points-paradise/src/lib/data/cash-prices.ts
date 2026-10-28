@@ -1,7 +1,9 @@
 import { eq } from 'drizzle-orm'
 import type { AppDb } from '../db/client'
 import { dataSources, deals } from '../db/schema'
+import { CABIN_LABELS } from '../domain/constants'
 import type { Deal } from '../domain/types'
+import { dateLabel } from '../format'
 import { canSpend, withinQuota } from '../engine/budget'
 import { searchFlightPrice, searchHotelRate } from '../providers/serpapi'
 import { logJob, monthSpendUsd, monthStart, requestsSince } from './usage'
@@ -85,12 +87,24 @@ export async function lookupCashPrice(
       )
       .where(eq(deals.id, deal.id))
     await logJob(db, { provider, jobType: deps.jobType, params: { dealId: deal.id }, status: 'succeeded', startedAt, requestCount: 1, estimatedCostUsd: cost, resultsCount: found ? 1 : 0 })
-    return found
-      ? { status: 'priced', cashUsd: found.priceUsd }
-      : { status: 'not_found', reason: isHotel ? 'Google Hotels had no matching rate for these dates.' : 'Google Flights had no matching fare in this cabin for that date.' }
+    if (found) return { status: 'priced', cashUsd: found.priceUsd }
+    return {
+      status: 'not_found',
+      reason: isHotel
+        ? `Google Hotels had no rate for ${deal.hotel!.property} on these dates.`
+        : `Google Flights had no ${CABIN_LABELS[deal.flight!.cabin].toLowerCase()} fare from ${deal.originAirport} to ${deal.destination.airport} on ${dateLabel(deal.travelStart)}.`,
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Cash lookup failed'
     await logJob(db, { provider, jobType: deps.jobType, params: { dealId: deal.id }, status: 'failed', startedAt, requestCount: 1, error: message })
-    return { status: 'failed', reason: message }
+    return { status: 'failed', reason: lookupError(message) }
   }
+}
+
+/** Plain-language reason for a failed lookup; the full error stays in Settings → Usage. */
+function lookupError(message: string): string {
+  if (/timeout|timed out|aborted/i.test(message)) return 'Google took too long to answer. Try again in a minute.'
+  if (/\b(401|403)\b|invalid api key/i.test(message)) return 'SerpApi did not accept the key. Check SERPAPI_API_KEY in Vercel.'
+  if (/\b429\b|run out of searches/i.test(message)) return 'SerpApi says the plan is out of searches or busy. Try again later.'
+  return 'The cash-price lookup failed. Details are in Settings → Usage.'
 }

@@ -69,6 +69,13 @@ describe('valueDeal', () => {
     expect(valueDeal(deal, evalCtx()).calculable).toBe(false)
   })
 
+  it('still values an award against a mixed-cabin cash fare, with a note and lower confidence', () => {
+    const v = valueDeal(flightDeal({ cashProduct: { cabin: 'business', origin: 'LAX', destination: 'HND', date: '2026-12-01', mixedCabin: true } }), evalCtx())
+    expect(v.calculable).toBe(true)
+    expect(v.flags.find((f) => f.code === 'comparability_minor')?.message).toMatch(/shorter flight in a lower cabin/)
+    expect(v.confidence).not.toBe('high')
+  })
+
   it('flags inflated cash prices against peers and lowers practical CPP', () => {
     const v = valueDeal(flightDeal({ comparableCashUsd: 12_000 }), { ...evalCtx(), peerCashPrices: [4_000, 4_500, 5_000] })
     expect(v.flags.some((f) => f.code === 'inflated_vs_peers')).toBe(true)

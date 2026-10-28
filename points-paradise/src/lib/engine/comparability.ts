@@ -87,6 +87,13 @@ export function checkComparability(deal: Pick<Deal, 'kind' | 'flight' | 'hotel' 
           message: `Cash fare has fewer stops (${cash.stops}) than the award (${f.stops}).`,
         })
       }
+      if (cash.mixedCabin && !f.mixedCabin) {
+        issues.push({
+          severity: 'minor',
+          code: 'mixed_cabin_cash',
+          message: 'The cash fare has a shorter flight in a lower cabin, so it is a little cheaper and the value may be understated.',
+        })
+      }
       if (cash.refundable === true) {
         issues.push({ severity: 'minor', code: 'refundable_cash', message: 'Cash comparison is a refundable fare, which usually costs more than the cheapest fare.' })
       }
