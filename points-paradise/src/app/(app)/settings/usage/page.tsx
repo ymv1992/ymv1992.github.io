@@ -7,13 +7,11 @@ import { usageSummary } from '@/lib/data/usage'
 import { isStale } from '@/lib/engine/status'
 import { dateTime, usd } from '@/lib/format'
 import { getEvaluation } from '@/lib/server/loaders'
-import { requireUserId } from '@/lib/server/session'
 import { Badge, Card, PageHeader, SectionTitle, Stat } from '@/components/ui'
 
 export const metadata: Metadata = { title: 'Usage' }
 
 export default async function UsagePage() {
-  await requireUserId()
   const data = await getEvaluation()
   const db = await getDb()
   const { settings } = await loadAccount(db, data.userId)

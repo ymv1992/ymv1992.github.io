@@ -11,8 +11,6 @@ export interface SessionPayload {
   uid: string
   iat: number
   exp: number
-  /** Set for a guest sign-in: the guest pass it came from (view-only access). */
-  gid?: string
 }
 
 const DEV_FALLBACK_SECRET = 'dev-only-insecure-session-secret-change-me-0123456789'
@@ -44,14 +42,8 @@ async function hmacKey(secret: string): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'])
 }
 
-export async function createSessionToken(
-  uid: string,
-  now = Date.now(),
-  secret = sessionSecret(),
-  opts: { guestPassId?: string; ttlSeconds?: number } = {},
-): Promise<string> {
-  const iat = Math.floor(now / 1000)
-  const payload: SessionPayload = { uid, iat, exp: iat + (opts.ttlSeconds ?? SESSION_TTL_SECONDS), ...(opts.guestPassId ? { gid: opts.guestPassId } : {}) }
+export async function createSessionToken(uid: string, now = Date.now(), secret = sessionSecret()): Promise<string> {
+  const payload: SessionPayload = { uid, iat: Math.floor(now / 1000), exp: Math.floor(now / 1000) + SESSION_TTL_SECONDS }
   const body = b64url(new TextEncoder().encode(JSON.stringify(payload)))
   const sig = new Uint8Array(await crypto.subtle.sign('HMAC', await hmacKey(secret), new TextEncoder().encode(body)))
   return `${body}.${b64url(sig)}`
@@ -71,7 +63,6 @@ export async function verifySessionToken(token: string | undefined | null, now =
   try {
     const payload = JSON.parse(new TextDecoder().decode(fromB64url(body))) as SessionPayload
     if (typeof payload.uid !== 'string' || typeof payload.exp !== 'number') return null
-    if (payload.gid !== undefined && typeof payload.gid !== 'string') return null
     if (payload.exp * 1000 < now) return null
     return payload
   } catch {

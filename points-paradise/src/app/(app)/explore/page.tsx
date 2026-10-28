@@ -6,7 +6,6 @@ import { evidenceTier } from '@/lib/engine/ranking'
 import { cpp, points } from '@/lib/format'
 import { integrationStatus } from '@/lib/server/config'
 import { getEvaluation } from '@/lib/server/loaders'
-import { getViewer } from '@/lib/server/session'
 import { toCardData } from '@/lib/view/deal-view'
 import { overallRanks } from '@/lib/view/feed'
 import { PLAYBOOK, PLAYBOOK_REVIEWED } from '@/lib/view/playbook'
@@ -30,7 +29,7 @@ export default async function ExplorePage({ searchParams }: { searchParams: SP }
   const destination = sp.destination?.trim().slice(0, 80) ?? null
 
   // Record searches (deduplicated) so they can inform recommendations and appear in History.
-  if ((q || destination) && !(await getViewer())?.guest) {
+  if (q || destination) {
     const recent = await data.db
       .select({ id: searchHistory.id })
       .from(searchHistory)

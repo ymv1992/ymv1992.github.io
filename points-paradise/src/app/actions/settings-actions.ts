@@ -10,7 +10,6 @@ import { removeDemoData, seedDemoData } from '@/lib/db/seed-demo'
 import { loadAccount, setActiveProfile } from '@/lib/data/account'
 import { resetPersonalization } from '@/lib/data/feedback'
 import { deleteUserData } from '@/lib/data/privacy'
-import { cancelGuestPass, createGuestPass, MAX_GUEST_LOGINS } from '@/lib/data/guest-passes'
 import { CABINS, CARD_TYPE_IDS, CATEGORY_DEFS, DATE_FLEXIBILITY, DEAL_BREAKERS, TRAVEL_TAGS } from '@/lib/domain/constants'
 import { getAirport } from '@/lib/geo/airports'
 import { isValidTimeZone } from '@/lib/time'
@@ -249,37 +248,4 @@ export async function deleteAccountAction(_prev: FormState, fd: FormData): Promi
   await deleteUserData(await getDb(), userId, { includeManualDeals: bool(fd.get('includeManualDeals')) })
   await endSession()
   redirect('/login')
-}
-
-export interface GuestPassState {
-  error: string | null
-  /** The new pass's password, shown to the owner once. */
-  created?: { password: string; label: string; loginsAllowed: number; allowSearch: boolean }
-  attempt?: number
-}
-
-const guestPassSchema = z.object({
-  label: z.string().trim().max(40).transform((v) => v || 'Guest'),
-  loginsAllowed: z.coerce.number().int().min(1).max(MAX_GUEST_LOGINS),
-})
-
-export async function createGuestPassAction(prev: GuestPassState, fd: FormData): Promise<GuestPassState> {
-  const userId = await requireUserId()
-  const attempt = (prev.attempt ?? 0) + 1
-  const parsed = guestPassSchema.safeParse({ label: fd.get('label') ?? '', loginsAllowed: fd.get('loginsAllowed') ?? 3 })
-  if (!parsed.success) return { error: firstIssue(parsed.error), attempt }
-  const allowSearch = bool(fd.get('allowSearch'))
-  const out = await createGuestPass(await getDb(), userId, { ...parsed.data, allowSearch })
-  if (!out.ok) return { error: out.error, attempt }
-  revalidatePath('/settings')
-  return { error: null, created: { password: out.password, label: parsed.data.label, loginsAllowed: parsed.data.loginsAllowed, allowSearch }, attempt }
-}
-
-export async function cancelGuestPassAction(_prev: FormState, fd: FormData): Promise<FormState> {
-  const userId = await requireUserId()
-  const id = z.string().uuid().safeParse(fd.get('id'))
-  if (!id.success) return { error: 'Unknown guest pass' }
-  const cancelled = await cancelGuestPass(await getDb(), userId, id.data)
-  revalidatePath('/settings')
-  return cancelled ? { error: null, ok: 'Cancelled. Anyone signed in with it is signed out.' } : { error: 'That pass was already cancelled.' }
 }

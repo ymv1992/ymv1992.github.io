@@ -3,8 +3,7 @@ import { redirect } from 'next/navigation'
 import { getDb } from '@/lib/db/client'
 import { loadAccount } from '@/lib/data/account'
 import { unreadNotifications } from '@/lib/data/notifications'
-import { logout } from '@/app/login/actions'
-import { getViewer, requireViewerId } from '@/lib/server/session'
+import { requireUserId } from '@/lib/server/session'
 import { points } from '@/lib/format'
 import { AlertsBell } from '@/components/shell/alerts-bell'
 import { MobileNav, SidebarNav } from '@/components/shell/nav-links'
@@ -13,11 +12,10 @@ import { ThemeToggle } from '@/components/shell/theme-toggle'
 export const dynamic = 'force-dynamic'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const userId = await requireViewerId()
-  const guest = (await getViewer())?.guest ?? null
+  const userId = await requireUserId()
   const db = await getDb()
   const account = await loadAccount(db, userId)
-  if (!account.settings.onboardingCompletedAt && !guest) redirect('/onboarding')
+  if (!account.settings.onboardingCompletedAt) redirect('/onboarding')
   const unread = await unreadNotifications(db, userId)
 
   return (
@@ -50,20 +48,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <ThemeToggle />
           </div>
         </header>
-        {guest && (
-          <div role="note" className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-line bg-primary-soft px-4 py-2 text-center text-xs text-ink sm:px-6">
-            <span>
-              <strong>Guest preview.</strong> You can look at everything, but changes are turned off
-              {guest.allowSearch ? ' (flight and hotel searches on the Award Calendar still work)' : ''}. This pass has {guest.loginsLeft} sign-in
-              {guest.loginsLeft === 1 ? '' : 's'} left.
-            </span>
-            <form action={logout}>
-              <button type="submit" className="underline underline-offset-2">
-                Sign out
-              </button>
-            </form>
-          </div>
-        )}
         {account.settings.demoMode && (
           <div role="note" className="border-b border-line bg-gold-soft px-4 py-2 text-center text-xs text-gold sm:px-6">
             <strong>Demo data is on.</strong> Anything marked DEMO is fictional and never bookable.{' '}

@@ -310,25 +310,6 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
   account data. Transfer-partner reference data is kept.
 - No loyalty passwords or card numbers are ever requested or stored.
 
-### Guest passes
-
-**Settings → Guest passes** lets a friend look around your site so they can
-give feedback.
-
-- **Creating a pass.** The app makes up a 12-character password and shows
-  it once. Only a hash of it is stored.
-- **Signing in.** Your friend taps **Have a guest pass?** on the sign-in
-  page and enters the password. A pass allows a set number of sign-ins
-  (3 by default). Each sign-in lasts up to 24 hours.
-- **What guests can do.** Guests see your data but can't change it. Saving,
-  swiping, settings, alerts, cash-price lookups, AI and data download all
-  lead to a "view-only" page instead.
-- **Searches.** Award and hotel searches are allowed only if you ticked
-  that box when you created the pass.
-- **Cancelling.** Cancelling a pass signs its guest out right away.
-- **Limits.** At most 3 passes can be in use at once. Failed guest
-  sign-ins count toward the same lockout as failed owner sign-ins.
-
 ## Implemented vs incomplete
 
 ### Implemented and tested
@@ -424,9 +405,7 @@ recorded fixtures, mocks, or type-checking:
 - **A committed end-to-end browser test suite.** The UI was smoke-tested in
   a headless browser during development; there is no committed Playwright
   suite.
-- **Multi-user accounts** (Phase 5). Not built, by design. Guest passes
-  (above) give a friend view-only access to your account, not an account
-  of their own.
+- **Multi-user accounts** (Phase 5). Not built, by design.
 
 ## Project layout
 

@@ -21,7 +21,6 @@ import { PriceHistoryChart } from '@/components/charts/price-history-chart'
 import { Badge, Card, ExternalLink, Notice, SectionTitle, Stat, StatusBadge } from '@/components/ui'
 import { DealExplainer } from '@/components/deal/deal-explainer'
 import { integrationStatus } from '@/lib/server/config'
-import { getViewer } from '@/lib/server/session'
 import { PriceButton } from '@/components/deal/price-button'
 
 export const metadata: Metadata = { title: 'Deal analysis' }
@@ -155,7 +154,7 @@ export default async function DealPage({ params, searchParams }: { params: Promi
                     ))}
                   </ul>
                 </Notice>
-                {!isDemo && deal.comparableCashUsd == null && deal.sourceKind !== 'manual' && integrationStatus().serpApi && !(await getViewer())?.guest && (
+                {!isDemo && deal.comparableCashUsd == null && deal.sourceKind !== 'manual' && integrationStatus().serpApi && (
                   <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
                     <span className="text-muted">Look up the cash price for this {deal.kind === 'hotel' ? 'stay' : 'flight'}:</span>
                     <PriceButton dealId={deal.id} cpp={null} cashUsd={null} tried={deal.comparableCashObservedAt != null} canPrice />

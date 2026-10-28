@@ -15,15 +15,13 @@ import {
 import { getDb } from '@/lib/db/client'
 import { loadAccount } from '@/lib/data/account'
 import { listPartners } from '@/lib/data/transfers'
-import { listGuestPasses } from '@/lib/data/guest-passes'
 import { dayStart, requestsSince, usageSummary } from '@/lib/data/usage'
 import { DISCOVERY_DAILY_CAP, DISCOVERY_DESTINATIONS } from '@/lib/jobs/discovery'
 import { HOTEL_PLACES } from '@/lib/jobs/hotel-discovery'
 import { integrationStatus } from '@/lib/server/config'
 import { requireUserId } from '@/lib/server/session'
-import { dateTime, usd } from '@/lib/format'
+import { usd } from '@/lib/format'
 import {
-  cancelGuestPassAction,
   createProfileAction,
   deleteAccountAction,
   deleteProfileAction,
@@ -40,7 +38,6 @@ import {
 import { logout } from '@/app/login/actions'
 import { ActionForm } from '@/components/action-form'
 import { BrowserNotificationToggle } from '@/components/settings/browser-notifications'
-import { GuestPassForm } from '@/components/settings/guest-pass-form'
 import { Badge, Card, PageHeader, SectionTitle, buttonClass } from '@/components/ui'
 
 export const metadata: Metadata = { title: 'Settings' }
@@ -57,7 +54,6 @@ export default async function SettingsPage() {
   const monthSpend = usage.byProvider.reduce((s, p) => s + Number(p.cost), 0)
   const discoveryToday = await requestsSince(db, 'seats_aero', dayStart(new Date()), 'discovery')
   const destinationCount = DISCOVERY_DESTINATIONS.reduce((n, g) => n + g.airports.length, 0)
-  const guestPasses = await listGuestPasses(db, userId)
 
   return (
     <div className="space-y-8">
@@ -80,7 +76,6 @@ export default async function SettingsPage() {
           ['notifications', 'Notifications'],
           ['data', 'Data sources'],
           ['budgets', 'Budgets & AI'],
-          ['guests', 'Guest passes'],
           ['privacy', 'Privacy'],
         ].map(([id, label]) => (
           <a key={id} href={`#${id}`} className="rounded-full border border-line bg-surface px-3 py-1.5 text-muted hover:text-ink">
@@ -490,36 +485,6 @@ export default async function SettingsPage() {
           </label>
           <p className="text-xs text-muted">AI never produces prices, availability or calculations — only prose from facts the app computed.</p>
         </ActionForm>
-      </Card>
-
-      <Card id="guests" className="scroll-mt-20 p-5">
-        <SectionTitle>Guest passes</SectionTitle>
-        <p className="mb-4 text-sm text-muted">
-          Let a friend look around your site to give feedback. They see what you see, but can&rsquo;t save, swipe, change settings, set alerts, look up cash prices or use
-          AI. A pass stops working after its sign-ins are used, and cancelling it signs them out straight away.
-        </p>
-        <GuestPassForm />
-        {guestPasses.length > 0 && (
-          <ul className="mt-5 divide-y divide-line rounded-xl border border-line" aria-label="Your guest passes">
-            {guestPasses.map((p) => (
-              <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5 text-sm">
-                <span>
-                  <span className="font-semibold">{p.label}</span>{' '}
-                  <span className="text-muted">
-                    · {p.loginsUsed} of {p.loginsAllowed} sign-ins used{p.allowSearch ? ' · can search' : ''}
-                    {p.lastUsedAt ? ` · last used ${dateTime(p.lastUsedAt, settings.timezone)}` : ''}
-                  </span>{' '}
-                  <Badge tone={p.status === 'active' ? 'ok' : 'neutral'}>{p.status === 'active' ? 'Active' : p.status === 'used_up' ? 'Used up' : 'Cancelled'}</Badge>
-                </span>
-                {p.status !== 'cancelled' && (
-                  <ActionForm action={cancelGuestPassAction} submitLabel="Cancel pass" className="flex flex-wrap items-center gap-2">
-                    <input type="hidden" name="id" value={p.id} />
-                  </ActionForm>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
       </Card>
 
       <Card id="privacy" className="scroll-mt-20 p-5">
