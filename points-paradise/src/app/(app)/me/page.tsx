@@ -9,6 +9,7 @@ import { Card, PageHeader, Stat } from '@/components/ui'
 export const metadata: Metadata = { title: 'Profile' }
 
 const LINKS: { href: string; label: string; icon: IconName; hint: string }[] = [
+  { href: '/trips', label: 'My Trips', icon: 'suitcase', hint: 'Day-by-day plans you can rearrange, tick off and share' },
   { href: '/trip-architect', label: 'Trip Architect', icon: 'sparkles', hint: 'Assemble complete trips within your budget' },
   { href: '/transfers', label: 'Transfer Center', icon: 'transfer', hint: 'Partners, ratios, bonuses and the calculator' },
   { href: '/calendar', label: 'Award Calendar', icon: 'calendar', hint: 'Flexible dates and price history' },

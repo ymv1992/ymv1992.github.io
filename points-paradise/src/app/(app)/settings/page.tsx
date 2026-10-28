@@ -494,7 +494,7 @@ export default async function SettingsPage() {
             <a href="/api/export" download className={buttonClass('secondary')}>
               Download my data (JSON)
             </a>
-            <span className="text-xs text-muted">Profiles, wallet, saved deals, notes, alerts, history and deals you entered.</span>
+            <span className="text-xs text-muted">Profiles, wallet, saved deals, trips, notes, alerts, history and deals you entered.</span>
           </div>
           <ActionForm action={resetPersonalizationAction} submitLabel="Reset personalization" className="flex flex-wrap items-center gap-3">
             <span className="text-sm text-muted">Clears learned preferences, ratings and passes (passed deals reappear).</span>
