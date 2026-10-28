@@ -9,17 +9,20 @@ import { deals, watchlists } from '@/lib/db/schema'
 import { loadAccount } from '@/lib/data/account'
 import { evaluateMany } from '@/lib/data/evaluation'
 import { itemsNeedingMedia } from '@/lib/data/place-media'
+import { tripCurrenciesInUse } from '@/lib/data/trip-rates'
 import { listSaved } from '@/lib/data/saved'
 import { dealsForTrip, getTrip, tripDayCount, tripDayDate, tripTotals, tripWatchWindow } from '@/lib/data/trips'
 import { CABINS, CABIN_LABELS } from '@/lib/domain/constants'
 import { dateLabel, dateRange, points, usd } from '@/lib/format'
 import { integrationStatus } from '@/lib/server/config'
 import { requireUserId } from '@/lib/server/session'
+import { formatMoney } from '@/lib/trips/money'
 import { toItemView, type TripDayView } from '@/lib/trips/shared'
 import { ActionForm } from '@/components/action-form'
 import { Icon } from '@/components/icons'
 import { ConfirmSubmit } from '@/components/trips/confirm-submit'
 import { FindMediaButton } from '@/components/trips/find-media-button'
+import { RatesCard } from '@/components/trips/rates-card'
 import { ShareCard } from '@/components/trips/share-card'
 import { TripBoard } from '@/components/trips/trip-board'
 import { TripDetailsForm } from '@/components/trips/trip-details-form'
@@ -47,7 +50,9 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
   const { wallet, profile } = await loadAccount(db, userId)
   const today = new Date().toISOString().slice(0, 10)
   const days: TripDayView[] = Array.from({ length: tripDayCount(trip) }, (_, i) => ({ day: i + 1, date: tripDayDate(trip, i + 1) }))
-  const totals = tripTotals(items)
+  const totals = tripTotals(items, trip.rates)
+  const currencies = await tripCurrenciesInUse(db, trip)
+  const unconverted = Object.entries(totals.unconverted).map(([c, a]) => formatMoney(a, c))
   const h = await headers()
   const origin = `${h.get('x-forwarded-proto') ?? 'https'}://${h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000'}`
 
@@ -92,15 +97,34 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
           value={totals.points ? points(totals.points) : '—'}
           hint={totals.points ? (short ? <span className="text-warn">{points(short)} more than your balance</span> : `You have ${points(wallet.chaseBalance)}`) : 'Add points to items to total them'}
         />
-        <Stat label="Cash" value={totals.cashUsd ? usd(totals.cashUsd) : '—'} />
+        <Stat
+          label="Cash"
+          value={totals.cashUsd ? usd(totals.cashUsd) : '—'}
+          hint={unconverted.length ? <span className="text-warn">Plus {unconverted.join(', ')} with no rate yet</span> : currencies.length ? 'In dollars, at your trip’s locked rates' : undefined}
+        />
       </Card>
 
       {needMedia > 0 && <FindMediaButton tripId={trip.id} count={needMedia} />}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <TripBoard key={boardVersion(items)} tripId={trip.id} destination={trip.destination} days={days} items={items.map(toItemView)} />
+        <TripBoard
+          key={boardVersion(items)}
+          tripId={trip.id}
+          destination={trip.destination}
+          currency={trip.currency}
+          rates={trip.rates}
+          days={days}
+          items={items.map(toItemView)}
+        />
 
         <div className="space-y-5">
+          {currencies.length > 0 && (
+            <Card className="p-4">
+              <SectionTitle>Exchange rates</SectionTitle>
+              <RatesCard tripId={trip.id} currencies={currencies} rates={trip.rates} />
+            </Card>
+          )}
+
           <Card className="p-4">
             <SectionTitle aside={<Icon name="share" className="size-4 text-muted" />}>Share with a partner</SectionTitle>
             <ShareCard tripId={trip.id} initialToken={trip.shareToken} origin={origin} />
@@ -219,6 +243,7 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
                     startDate: trip.startDate,
                     endDate: trip.endDate,
                     dayCount: trip.dayCount,
+                    currency: trip.currency,
                     notes: trip.notes,
                   }}
                 />

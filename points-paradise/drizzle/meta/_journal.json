@@ -50,6 +50,13 @@
       "when": 1793201022500,
       "tag": "0006_place_media",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793202417323,
+      "tag": "0007_trip_currencies",
+      "breakpoints": true
     }
   ]
 }

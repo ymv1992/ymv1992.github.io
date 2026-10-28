@@ -395,6 +395,22 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
     days. Daily caps keep usage light (300 OpenStreetMap searches, 1,500
     Wikimedia requests). **Find maps & photos** fills in items added before
     this existed. No keys, no cost.
+  - **Local currency.** Pick a trip's local currency in its details, then
+    enter costs in that currency (or any other on the list). Each shows its
+    dollar value too, such as "¥12,000 · about $80", and totals are in
+    dollars.
+    - **Where rates come from.** The European Central Bank's daily reference
+      rate, via Frankfurter. Currencies the ECB doesn't publish (such as
+      the Costa Rican colón) use the community currency-api instead. Both
+      are free, with no key.
+    - **Locking.** A currency's rate is locked to the trip the first time
+      it's needed, so totals don't drift. **Update to today's rate** replaces
+      it.
+    - **Your own rate.** You can type your own rate (for example, your
+      card's). Currencies with no rate yet are listed apart from the
+      dollar total.
+    - **Existing trips.** Dollar costs entered before this keep working
+      unchanged.
   - **Download PDF.** Downloads the itinerary with tick boxes, from your
     page or the share link. The PDF uses the standard built-in fonts, so
     letters outside Western European alphabets print as "?" and emoji are

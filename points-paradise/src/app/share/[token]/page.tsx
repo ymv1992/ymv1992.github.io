@@ -2,7 +2,8 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getDb } from '@/lib/db/client'
 import { getSharedTrip, tripDayCount, tripDayDate, tripTotals } from '@/lib/data/trips'
-import { dateRange, points, usd } from '@/lib/format'
+import { dateRange, points } from '@/lib/format'
+import { costLabel, formatMoney, formatUsd } from '@/lib/trips/money'
 import { isGoogleMapsLink } from '@/lib/places/google-maps-link'
 import { TRIP_KIND_LABEL, dayHeading, itemMapsLink, type TripDayView } from '@/lib/trips/shared'
 import { hasPlaceMedia, PlaceMediaPanel, PlaceThumb } from '@/components/trips/place-media'
@@ -19,7 +20,7 @@ export default async function SharedTripPage({ params }: { params: Promise<{ tok
   if (!data) notFound()
   const { trip, items } = data
   const days: TripDayView[] = Array.from({ length: tripDayCount(trip) }, (_, i) => ({ day: i + 1, date: tripDayDate(trip, i + 1) }))
-  const totals = tripTotals(items)
+  const totals = tripTotals(items, trip.rates)
   const sections = [
     ...days.map((d) => ({ key: `d${d.day}`, title: dayHeading(d), list: items.filter((i) => i.day === d.day) })),
     { key: 'ideas', title: 'Ideas', list: items.filter((i) => i.day == null) },
@@ -37,7 +38,8 @@ export default async function SharedTripPage({ params }: { params: Promise<{ tok
         <span className="text-sm text-muted">
           {totals.done} of {totals.items} done
           {totals.points ? ` · ${points(totals.points)} Chase pts` : ''}
-          {totals.cashUsd ? ` · ${usd(totals.cashUsd)}` : ''}
+          {totals.cashUsd ? ` · ${formatUsd(totals.cashUsd)}` : ''}
+          {Object.entries(totals.unconverted).map(([c, a]) => ` · plus ${formatMoney(a, c)}`)}
         </span>
       </div>
       {trip.notes && <p className="mt-4 text-sm whitespace-pre-line">{trip.notes}</p>}
@@ -64,7 +66,7 @@ export default async function SharedTripPage({ params }: { params: Promise<{ tok
                           <span className="font-semibold">{i.title}</span>
                         </p>
                         <p className="mt-0.5 flex flex-wrap gap-x-2 text-xs text-muted">
-                          <span>{[TRIP_KIND_LABEL[i.kind], i.points ? `${points(i.points)} pts` : null, i.costUsd ? usd(i.costUsd) : null].filter(Boolean).join(' · ')}</span>
+                          <span>{[TRIP_KIND_LABEL[i.kind], i.points ? `${points(i.points)} pts` : null, i.costAmount ? costLabel(i.costAmount, i.costCurrency, trip.rates) : null].filter(Boolean).join(' · ')}</span>
                           {i.place && (
                             <a href={itemMapsLink(i, trip.destination) ?? '#'} target="_blank" rel="noopener noreferrer" className="text-primary">
                               {i.place} ↗

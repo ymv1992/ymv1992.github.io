@@ -5,6 +5,7 @@ import type { AppDb } from '../db/client'
 import { deals, trips, tripItems, type TripItemKind } from '../db/schema'
 import { CABINS, type Cabin } from '../domain/constants'
 import type { Deal } from '../domain/types'
+import { CURRENCY_CODES, toUsd, type TripRate } from '../trips/money'
 import { TRIP_ITEM_KINDS } from '../trips/shared'
 import { createWatch, deleteWatch } from './watchlists'
 
@@ -38,6 +39,8 @@ export const tripInputSchema = z
     startDate: z.preprocess(blankToNull, isoDate.nullable().default(null)),
     endDate: z.preprocess(blankToNull, isoDate.nullable().default(null)),
     dayCount: z.preprocess(blankToNull, z.coerce.number().int().min(1).max(MAX_TRIP_DAYS).default(3)),
+    /** The destination's currency; dollars (or blank) means costs are in dollars only. */
+    currency: z.preprocess((v) => (v === '' || v === 'USD' || v == null ? null : v), z.enum(CURRENCY_CODES).nullable()),
     notes: optText(1000),
   })
   .refine((v) => (v.startDate == null) === (v.endDate == null), { path: ['endDate'], message: 'Enter both dates, or neither' })
@@ -63,7 +66,8 @@ export const tripItemInputSchema = z.object({
       .nullable()
       .default(null),
   ),
-  costUsd: z.preprocess(blankToNull, z.coerce.number().min(0).max(1_000_000).nullable().default(null)),
+  costAmount: z.preprocess(blankToNull, z.coerce.number().min(0).max(1_000_000_000).nullable().default(null)),
+  costCurrency: z.preprocess((v) => (v === '' || v == null ? 'USD' : v), z.enum(CURRENCY_CODES)),
   points: z.preprocess(blankToNull, z.coerce.number().int().min(0).max(10_000_000).nullable().default(null)),
   notes: optText(1000),
 })
@@ -87,16 +91,22 @@ export interface TripTotals {
   items: number
   done: number
   points: number
+  /** Every cost in dollars, at the trip's locked rates. */
   cashUsd: number
+  /** Costs that can't be counted in dollars yet (no rate for their currency), by currency. */
+  unconverted: Record<string, number>
 }
 
-export function tripTotals(items: readonly Pick<TripItemRow, 'done' | 'points' | 'costUsd'>[]): TripTotals {
-  return {
-    items: items.length,
-    done: items.filter((i) => i.done).length,
-    points: items.reduce((s, i) => s + (i.points ?? 0), 0),
-    cashUsd: items.reduce((s, i) => s + (i.costUsd ?? 0), 0),
+export function tripTotals(items: readonly Pick<TripItemRow, 'done' | 'points' | 'costAmount' | 'costCurrency'>[], rates: Record<string, TripRate>): TripTotals {
+  let cashUsd = 0
+  const unconverted: Record<string, number> = {}
+  for (const i of items) {
+    if (!i.costAmount) continue
+    const usd = toUsd(i.costAmount, i.costCurrency, rates)
+    if (usd == null) unconverted[i.costCurrency] = (unconverted[i.costCurrency] ?? 0) + i.costAmount
+    else cashUsd += usd
   }
+  return { items: items.length, done: items.filter((i) => i.done).length, points: items.reduce((s, i) => s + (i.points ?? 0), 0), cashUsd, unconverted }
 }
 
 export interface TripWithItems {
@@ -112,10 +122,10 @@ export async function listTrips(db: AppDb, userId: string): Promise<(TripRow & {
   const rows = await db.select().from(trips).where(eq(trips.userId, userId)).orderBy(sql`${trips.startDate} asc nulls last`, desc(trips.createdAt))
   if (rows.length === 0) return []
   const items = await db
-    .select({ tripId: tripItems.tripId, done: tripItems.done, points: tripItems.points, costUsd: tripItems.costUsd })
+    .select({ tripId: tripItems.tripId, done: tripItems.done, points: tripItems.points, costAmount: tripItems.costAmount, costCurrency: tripItems.costCurrency })
     .from(tripItems)
     .where(inArray(tripItems.tripId, rows.map((r) => r.id)))
-  return rows.map((r) => ({ ...r, totals: tripTotals(items.filter((i) => i.tripId === r.id)) }))
+  return rows.map((r) => ({ ...r, totals: tripTotals(items.filter((i) => i.tripId === r.id), r.rates) }))
 }
 
 export async function getTrip(db: AppDb, userId: string, tripId: string): Promise<TripWithItems | null> {
@@ -303,7 +313,8 @@ export async function addDealToTrip(db: AppDb, userId: string, tripId: string, d
       time: null,
       place: (isHotel ? deal.hotel?.property : [deal.destination.city, deal.destination.country].filter(Boolean).join(', '))?.slice(0, 200) || null,
       url: deal.bookingUrl && /^https?:\/\//i.test(deal.bookingUrl) ? deal.bookingUrl.slice(0, 500) : null,
-      costUsd: deal.mandatoryCashUsd,
+      costAmount: deal.mandatoryCashUsd,
+      costCurrency: 'USD',
       points: chasePoints,
       notes: deal.travelStart && day == null ? `Travel date ${deal.travelStart} is outside this trip's days.` : null,
       dealId: deal.id,

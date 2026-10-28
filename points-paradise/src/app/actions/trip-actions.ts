@@ -10,6 +10,7 @@ import { loadAccount } from '@/lib/data/account'
 import { getDeal } from '@/lib/data/deals'
 import { evaluateMany } from '@/lib/data/evaluation'
 import { enrichTripItem, itemsNeedingMedia } from '@/lib/data/place-media'
+import { ensureTripRates, refreshTripRate, setTripRate } from '@/lib/data/trip-rates'
 import {
   addDealToTrip,
   addTripItem,
@@ -29,6 +30,7 @@ import {
   type TripLayout,
 } from '@/lib/data/trips'
 import { CABINS } from '@/lib/domain/constants'
+import { currencyName, isKnownCurrency } from '@/lib/trips/money'
 import { integrationStatus } from '@/lib/server/config'
 import { requireUserId } from '@/lib/server/session'
 import type { FormState } from '@/components/action-form'
@@ -38,6 +40,7 @@ const uuid = z.string().uuid()
 const MEDIA_BATCH = 8
 
 const placeDeps = () => ({ fetch, now: new Date() })
+const rateDeps = placeDeps
 
 function firstIssue(err: z.ZodError): string {
   return err.issues[0]?.message ?? 'Please check the form'
@@ -52,7 +55,9 @@ export async function createTripAction(_prev: FormState, fd: FormData): Promise<
   const userId = await requireUserId()
   const parsed = tripInputSchema.safeParse(Object.fromEntries(fd))
   if (!parsed.success) return { error: firstIssue(parsed.error) }
-  const id = await createTrip(await getDb(), userId, parsed.data)
+  const db = await getDb()
+  const id = await createTrip(db, userId, parsed.data)
+  if (parsed.data.currency) await ensureTripRates(db, userId, id, [parsed.data.currency], rateDeps())
   refresh()
   redirect(`/trips/${id}`)
 }
@@ -63,9 +68,11 @@ export async function updateTripAction(_prev: FormState, fd: FormData): Promise<
   if (!tripId.success) return { error: 'Trip not found' }
   const parsed = tripInputSchema.safeParse(Object.fromEntries(fd))
   if (!parsed.success) return { error: firstIssue(parsed.error) }
-  if (!(await updateTrip(await getDb(), userId, tripId.data, parsed.data))) return { error: 'Trip not found' }
+  const db = await getDb()
+  if (!(await updateTrip(db, userId, tripId.data, parsed.data))) return { error: 'Trip not found' }
+  const missing = parsed.data.currency ? await ensureTripRates(db, userId, tripId.data, [parsed.data.currency], rateDeps()) : []
   refresh(tripId.data)
-  return { error: null, ok: 'Saved.' }
+  return { error: null, ok: missing.length ? `Saved. No free rate was found for ${missing.join(', ')}; type your own under Exchange rates.` : 'Saved.' }
 }
 
 export async function deleteTripAction(tripId: string): Promise<void> {
@@ -95,6 +102,7 @@ export async function saveTripItemAction(_prev: TripItemFormState, fd: FormData)
   if (!r.ok) return { error: r.error }
   const lookUp = itemId ? 'placeChanged' in r && r.placeChanged : parsed.data.place != null || parsed.data.url != null
   if (lookUp && (parsed.data.place || parsed.data.url)) await enrichTripItem(db, userId, r.id, placeDeps())
+  if (parsed.data.costAmount != null && parsed.data.costCurrency !== 'USD') await ensureTripRates(db, userId, tripId.data, [parsed.data.costCurrency], rateDeps())
   refresh(tripId.data)
   return { error: null, ok: itemId ? 'Saved.' : 'Added.' }
 }
@@ -193,4 +201,27 @@ export async function findTripMediaAction(tripId: string): Promise<{ checked: nu
   }
   refresh(tripId)
   return { checked: Math.min(todo.length, MEDIA_BATCH), maps, photos, remaining: Math.max(0, todo.length - MEDIA_BATCH) }
+}
+
+/** Saves the owner's own rate for a currency ("1 US dollar = … units"). */
+export async function setTripRateAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const userId = await requireUserId()
+  const tripId = uuid.safeParse(fd.get('tripId'))
+  const code = String(fd.get('currency') ?? '')
+  const perUsd = Number(String(fd.get('perUsd') ?? '').replace(/,/g, ''))
+  if (!tripId.success || !isKnownCurrency(code)) return { error: 'Unknown currency' }
+  if (!(perUsd > 0)) return { error: 'Enter how much 1 US dollar is worth, like 152.5' }
+  if (!(await setTripRate(await getDb(), userId, tripId.data, code, perUsd))) return { error: 'Could not save the rate' }
+  refresh(tripId.data)
+  return { error: null, ok: 'Saved your rate.' }
+}
+
+/** Replaces a currency's locked rate with today's. */
+export async function refreshTripRateAction(tripId: string, code: string): Promise<{ ok: boolean; message: string }> {
+  const userId = await requireUserId()
+  if (!uuid.safeParse(tripId).success || !isKnownCurrency(code)) return { ok: false, message: 'Unknown currency' }
+  const rate = await refreshTripRate(await getDb(), userId, tripId, code, rateDeps())
+  if (!rate) return { ok: false, message: `No free source has a ${currencyName(code)} rate right now. You can type your own.` }
+  refresh(tripId)
+  return { ok: true, message: `Updated to today's rate: 1 USD = ${rate.perUsd.toLocaleString('en-US', { maximumFractionDigits: 4 })} ${code}.` }
 }

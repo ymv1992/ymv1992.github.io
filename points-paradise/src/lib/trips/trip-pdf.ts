@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import { TRIP_KIND_LABEL, tripDayCount, tripDayDate, tripTotals, type TripItemRow, type TripRow } from '../data/trips'
+import { costLabel, formatMoney, formatUsd, type TripRate } from './money'
 
 const PAGE = { width: 612, height: 792 } // US Letter, points
 const MARGIN = 54
@@ -14,10 +15,6 @@ const FALLBACKS: Record<string, string> = { '→': '->', '←': '<-', '✓': 'v'
 
 function dayLabel(iso: string): string {
   return new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
-}
-
-function money(n: number): string {
-  return `$${n.toLocaleString('en-US', { maximumFractionDigits: n < 100 ? 2 : 0 })}`
 }
 
 function fileSlug(name: string): string {
@@ -161,12 +158,12 @@ class Writer {
   }
 }
 
-function itemBlock(w: Writer, item: TripItemRow) {
+function itemBlock(w: Writer, item: TripItemRow, rates: Record<string, TripRate>) {
   const meta = [
     TRIP_KIND_LABEL[item.kind],
     item.place,
     item.points ? `${item.points.toLocaleString('en-US')} Chase pts` : null,
-    item.costUsd ? money(item.costUsd) : null,
+    item.costAmount ? costLabel(item.costAmount, item.costCurrency, rates, { code: item.costCurrency !== 'USD' }) : null,
   ]
     .filter(Boolean)
     .join(' · ')
@@ -191,7 +188,7 @@ export async function buildTripPdf(trip: TripRow, items: TripItemRow[], now = ne
   doc.setCreationDate(now)
   const w = new Writer(doc, await doc.embedFont(StandardFonts.Helvetica), await doc.embedFont(StandardFonts.HelveticaBold))
   const days = tripDayCount(trip)
-  const totals = tripTotals(items)
+  const totals = tripTotals(items, trip.rates)
 
   w.text(trip.name, { font: 'bold', size: 20, leading: 26 })
   const when = trip.startDate && trip.endDate ? `${dayLabel(trip.startDate)} to ${dayLabel(trip.endDate)}` : `${days} day${days === 1 ? '' : 's'}, dates not set`
@@ -200,9 +197,12 @@ export async function buildTripPdf(trip: TripRow, items: TripItemRow[], now = ne
     `${totals.items} thing${totals.items === 1 ? '' : 's'} planned`,
     totals.done ? `${totals.done} done` : null,
     totals.points ? `${totals.points.toLocaleString('en-US')} Chase points` : null,
-    totals.cashUsd ? `${money(totals.cashUsd)} cash` : null,
+    totals.cashUsd ? `${formatUsd(totals.cashUsd)} cash` : null,
+    ...Object.entries(totals.unconverted).map(([c, a]) => `plus ${formatMoney(a, c, { code: true })} (no rate yet)`),
   ].filter(Boolean)
   w.text(sums.join(' · '), { size: 10, color: MUTED })
+  const rateNotes = Object.entries(trip.rates).map(([c, r]) => `1 USD = ${r.perUsd.toLocaleString('en-US', { maximumFractionDigits: 4 })} ${c} (${r.source === 'manual' ? 'own rate' : 'rate'} from ${r.asOf})`)
+  if (rateNotes.length) w.text(`Dollar amounts use: ${rateNotes.join('; ')}`, { size: 8.5, color: MUTED })
   if (trip.notes) {
     w.gap(6)
     w.text(trip.notes, { size: 10 })
@@ -216,7 +216,7 @@ export async function buildTripPdf(trip: TripRow, items: TripItemRow[], now = ne
     w.rule()
     const list = items.filter((i) => i.day === day)
     if (!list.length) w.text('Nothing planned yet.', { size: 9.5, color: MUTED })
-    for (const item of list) itemBlock(w, item)
+    for (const item of list) itemBlock(w, item, trip.rates)
     w.gap(8)
   }
 
@@ -225,7 +225,7 @@ export async function buildTripPdf(trip: TripRow, items: TripItemRow[], now = ne
     w.ensure(48)
     w.text('Ideas (not on a day yet)', { font: 'bold', size: 13, leading: 20 })
     w.rule()
-    for (const item of ideas) itemBlock(w, item)
+    for (const item of ideas) itemBlock(w, item, trip.rates)
   }
 
   w.footer(`${trip.name} · made with Points & Paradise on ${now.toISOString().slice(0, 10)}`)

@@ -23,7 +23,8 @@ export interface TripItemView {
   time: string | null
   place: string | null
   url: string | null
-  costUsd: number | null
+  costAmount: number | null
+  costCurrency: string
   points: number | null
   notes: string | null
   done: boolean
@@ -40,8 +41,8 @@ export interface TripDayView {
 }
 
 export function toItemView(row: TripItemView & Record<string, unknown>): TripItemView {
-  const { id, day, position, kind, title, time, place, url, costUsd, points, notes, done, dealId, lat, lng, mapSpan, photo } = row
-  return { id, day, position, kind, title, time, place, url, costUsd, points, notes, done, dealId, lat, lng, mapSpan, photo }
+  const { id, day, position, kind, title, time, place, url, costAmount, costCurrency, points, notes, done, dealId, lat, lng, mapSpan, photo } = row
+  return { id, day, position, kind, title, time, place, url, costAmount, costCurrency, points, notes, done, dealId, lat, lng, mapSpan, photo }
 }
 
 /** "Day 2 · Sat, Dec 5" (fixed to UTC so server and browser agree). */

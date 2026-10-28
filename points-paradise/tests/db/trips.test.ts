@@ -37,7 +37,7 @@ let db: AppDb
 let userId: string
 let otherId: string
 
-const item = (title: string, extra: Partial<TripItemInput> = {}): TripItemInput => ({ kind: 'activity', title, day: null, time: null, place: null, url: null, costUsd: null, points: null, notes: null, ...extra })
+const item = (title: string, extra: Partial<TripItemInput> = {}): TripItemInput => ({ kind: 'activity', title, day: null, time: null, place: null, url: null, costAmount: null, costCurrency: 'USD', points: null, notes: null, ...extra })
 const trip = (extra: Record<string, unknown> = {}) => tripInputSchema.parse({ name: 'Maui', destination: 'Maui, Hawaii', destAirport: 'ogg', startDate: '2026-12-04', endDate: '2026-12-07', ...extra })
 
 beforeAll(async () => {
@@ -61,15 +61,16 @@ describe('trip details', () => {
     expect(tripInputSchema.safeParse({ name: 'x', destAirport: 'Maui' }).success).toBe(false)
     expect(tripItemInputSchema.safeParse(item('Luau', { url: 'javascript:alert(1)' })).success).toBe(false)
     expect(tripItemInputSchema.safeParse(item('Luau', { time: '25:00' })).success).toBe(false)
-    expect(tripItemInputSchema.parse({ ...item('Luau'), day: 'ideas', time: '18:30', costUsd: '' })).toMatchObject({ day: null, time: '18:30', costUsd: null })
+    expect(tripItemInputSchema.parse({ ...item('Luau'), day: 'ideas', time: '18:30', costAmount: '', costCurrency: '' })).toMatchObject({ day: null, time: '18:30', costAmount: null, costCurrency: 'USD' })
+    expect(tripItemInputSchema.safeParse({ ...item('Luau'), costAmount: 10, costCurrency: 'XXX' }).success).toBe(false)
   })
 })
 
 describe('items', () => {
   it('go on a day or into ideas, can be moved between them, ticked off and removed', async () => {
     const id = await createTrip(db, userId, trip())
-    const a = await addTripItem(db, userId, id, item('Road to Hana', { day: 1, points: 0, costUsd: 40 }))
-    const b = await addTripItem(db, userId, id, item('Snorkel Molokini', { day: 1, costUsd: 120 }))
+    const a = await addTripItem(db, userId, id, item('Road to Hana', { day: 1, points: 0, costAmount: 40 }))
+    const b = await addTripItem(db, userId, id, item('Snorkel Molokini', { day: 1, costAmount: 120 }))
     const c = await addTripItem(db, userId, id, item('Sunset at Haleakala'))
     if (!a.ok || !b.ok || !c.ok) throw new Error('add failed')
     expect((await addTripItem(db, userId, id, item('Too late', { day: 9 }))).ok).toBe(false)
@@ -87,7 +88,7 @@ describe('items', () => {
     await setTripItemDone(db, userId, b.id, true)
     await deleteTripItem(db, userId, a.id)
     t = (await getTrip(db, userId, id))!
-    expect(tripTotals(t.items)).toEqual({ items: 2, done: 1, points: 0, cashUsd: 120 })
+    expect(tripTotals(t.items, t.trip.rates)).toEqual({ items: 2, done: 1, points: 0, cashUsd: 120, unconverted: {} })
   })
 
   it('refuse a rearrangement that is stale or names other items', async () => {
@@ -163,7 +164,7 @@ describe('deals and watches', () => {
       ['flight', 2, 40000, true],
     ])
     expect(t.items[0]!.notes).toMatch(/outside this trip/)
-    expect(tripTotals(t.items).cashUsd).toBeCloseTo(11.2)
+    expect(tripTotals(t.items, t.trip.rates).cashUsd).toBeCloseTo(11.2)
   })
 
   it('finds award flights already known for the trip', async () => {
