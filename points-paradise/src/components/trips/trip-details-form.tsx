@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from 'react'
 import { createTripAction, updateTripAction } from '@/app/actions/trip-actions'
+import { CURRENCIES } from '@/lib/trips/money'
 import type { FormState } from '../action-form'
 import { Button } from '../ui'
 
@@ -13,10 +14,11 @@ export interface TripDetailsDefaults {
   startDate: string | null
   endDate: string | null
   dayCount: number
+  currency: string | null
   notes: string | null
 }
 
-const EMPTY: TripDetailsDefaults = { name: '', destination: '', destAirport: null, startDate: null, endDate: null, dayCount: 3, notes: null }
+const EMPTY: TripDetailsDefaults = { name: '', destination: '', destAirport: null, startDate: null, endDate: null, dayCount: 3, currency: null, notes: null }
 
 /** Starts a trip, or edits one when `defaults.tripId` is set. Dates are optional: "someday" trips just get a number of days. */
 export function TripDetailsForm({ defaults = EMPTY }: { defaults?: TripDetailsDefaults }) {
@@ -88,6 +90,20 @@ export function TripDetailsForm({ defaults = EMPTY }: { defaults?: TripDetailsDe
           className="field uppercase"
         />
         <p className="mt-1 text-xs text-muted">Needed to watch for award flights to this trip.</p>
+      </div>
+      <div>
+        <label htmlFor={`${p}-cur`} className="label">
+          Local currency <span className="text-faint">(optional)</span>
+        </label>
+        <select id={`${p}-cur`} name="currency" defaultValue={defaults.currency ?? ''} className="field">
+          <option value="">Dollars only</option>
+          {CURRENCIES.filter(([c]) => c !== 'USD').map(([c, n]) => (
+            <option key={c} value={c}>
+              {n} ({c})
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs text-muted">Costs can be entered in it and are shown in dollars too.</p>
       </div>
       <div className="sm:col-span-2">
         <label htmlFor={`${p}-notes`} className="label">

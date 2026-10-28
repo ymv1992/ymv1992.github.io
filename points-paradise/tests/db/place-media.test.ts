@@ -14,7 +14,7 @@ let db: AppDb
 let userId: string
 let tripId: string
 
-const item = (title: string, extra: Partial<TripItemInput> = {}): TripItemInput => ({ kind: 'activity', title, day: 1, time: null, place: null, url: null, costUsd: null, points: null, notes: null, ...extra })
+const item = (title: string, extra: Partial<TripItemInput> = {}): TripItemInput => ({ kind: 'activity', title, day: 1, time: null, place: null, url: null, costAmount: null, costCurrency: 'USD', points: null, notes: null, ...extra })
 const molokiniSearch = () =>
   json({ query: { pages: [{ title: 'Molokini', index: 1, pageimage: 'Molokini_crater.jpg', coordinates: [{ lat: 20.633, lon: -156.496 }] }] } })
 

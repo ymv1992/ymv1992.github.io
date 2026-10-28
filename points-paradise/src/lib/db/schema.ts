@@ -382,6 +382,15 @@ export const watchlists = pgTable(
 /** Itinerary item types; labels live in lib/trips/shared.ts. */
 export type TripItemKind = 'flight' | 'hotel' | 'activity' | 'food' | 'transport' | 'note'
 
+/** A trip's locked exchange rate for one currency: how many units one US dollar buys. */
+export interface TripRate {
+  perUsd: number
+  /** ecb = European Central Bank via Frankfurter; currency_api = the community currency API; manual = typed by the owner. */
+  source: 'ecb' | 'currency_api' | 'manual'
+  /** Date the rate is from (YYYY-MM-DD). */
+  asOf: string
+}
+
 /** A freely licensed photo of a place, with the credit its licence requires. */
 export interface PlacePhoto {
   url: string
@@ -407,6 +416,10 @@ export const trips = pgTable(
     endDate: date('end_date', { mode: 'string' }),
     /** Number of days for a trip without dates. */
     dayCount: integer('day_count').notNull().default(3),
+    /** The destination's currency (ISO code); null means costs are in dollars only. */
+    currency: text('currency'),
+    /** Locked exchange rates by currency code, used to show costs in dollars. */
+    rates: jsonb('rates').$type<Record<string, TripRate>>().notNull().default({}),
     notes: text('notes'),
     /** Random token for the read-only share link; null when sharing is off. */
     shareToken: text('share_token').unique(),
@@ -433,7 +446,9 @@ export const tripItems = pgTable(
     time: text('time'),
     place: text('place'),
     url: text('url'),
-    costUsd: doublePrecision('cost_usd'),
+    /** Cost in `costCurrency`; shown in dollars too using the trip's locked rate. */
+    costAmount: doublePrecision('cost_amount'),
+    costCurrency: text('cost_currency').notNull().default('USD'),
     /** Chase points this item needs. */
     points: integer('points'),
     notes: text('notes'),

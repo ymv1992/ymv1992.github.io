@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react'
 import { saveTripItemAction, type TripItemFormState } from '@/app/actions/trip-actions'
+import { CURRENCIES, currencyName } from '@/lib/trips/money'
 import { TRIP_ITEM_KINDS, dayHeading, type TripDayView, type TripItemView } from '@/lib/trips/shared'
 import { Button } from '../ui'
 
@@ -12,12 +13,15 @@ import { Button } from '../ui'
 export function TripItemForm({
   tripId,
   days,
+  currency,
   item,
   day,
   onCancel,
 }: {
   tripId: string
   days: TripDayView[]
+  /** The trip's local currency, preselected for a new cost. */
+  currency: string | null
   item?: TripItemView
   /** Preselected day for a new item; null = ideas. */
   day?: number | null
@@ -26,6 +30,9 @@ export function TripItemForm({
   const [state, action, pending] = useActionState<TripItemFormState, FormData>(saveTripItemAction, { error: null })
   const p = `ti-${item?.id ?? `new-${day ?? 'ideas'}`}`
   const dayValue = item ? (item.day ?? 'ideas') : (day ?? 'ideas')
+  const costCurrency = item?.costAmount != null ? item.costCurrency : (currency ?? 'USD')
+  // The trip's currency and dollars first, then everything else.
+  const firstCodes = [...new Set([currency, 'USD'].filter((c): c is string => !!c))]
 
   return (
     <form action={action} className="grid gap-3 rounded-xl border border-line bg-surface-2/60 p-3 sm:grid-cols-6">
@@ -83,9 +90,29 @@ export function TripItemForm({
       </div>
       <div className="sm:col-span-3">
         <label htmlFor={`${p}-cost`} className="label">
-          Cost in $ <span className="text-faint">(optional)</span>
+          Cost <span className="text-faint">(optional)</span>
         </label>
-        <input id={`${p}-cost`} name="costUsd" type="number" min={0} step="0.01" defaultValue={item?.costUsd ?? ''} className="field tabular" />
+        <div className="flex gap-2">
+          <input id={`${p}-cost`} name="costAmount" type="number" min={0} step="any" defaultValue={item?.costAmount ?? ''} className="field tabular min-w-0 flex-1" />
+          <label htmlFor={`${p}-cur`} className="sr-only">
+            Currency
+          </label>
+          <select id={`${p}-cur`} name="costCurrency" defaultValue={costCurrency} className="field w-28 shrink-0">
+            {firstCodes.map((c) => (
+              <option key={c} value={c}>
+                {c} · {currencyName(c)}
+              </option>
+            ))}
+            <optgroup label="Other currencies">
+              {CURRENCIES.filter(([c]) => !firstCodes.includes(c)).map(([c, n]) => (
+                <option key={c} value={c}>
+                  {c} · {n}
+                </option>
+              ))}
+            </optgroup>
+          </select>
+        </div>
+        <p className="mt-1 text-xs text-muted">Enter it in the local currency; it&rsquo;s shown in dollars too.</p>
       </div>
       <div className="sm:col-span-3">
         <label htmlFor={`${p}-pts`} className="label">

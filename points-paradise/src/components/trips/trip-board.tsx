@@ -23,6 +23,7 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, v
 import { CSS } from '@dnd-kit/utilities'
 import { arrangeTripAction, deleteTripItemAction, setTripItemDoneAction } from '@/app/actions/trip-actions'
 import { isGoogleMapsLink } from '@/lib/places/google-maps-link'
+import { costLabel, type TripRate } from '@/lib/trips/money'
 import { TRIP_KIND_LABEL, dayHeading, itemMapsLink, type TripDayView, type TripItemView } from '@/lib/trips/shared'
 import { Icon } from '../icons'
 import { cx } from '../ui'
@@ -42,16 +43,27 @@ function buildColumns(days: TripDayView[], items: TripItemView[]): Columns {
   return cols
 }
 
-function money(n: number) {
-  return `$${n.toLocaleString('en-US', { maximumFractionDigits: n < 100 ? 2 : 0 })}`
-}
-
 /**
  * The itinerary: one column per day plus an ideas list. Items can be dragged
  * by their handle (press and hold on phones) to another place or day, ticked
  * off, edited or removed. Changes save straight away.
  */
-export function TripBoard({ tripId, destination, days, items }: { tripId: string; destination: string; days: TripDayView[]; items: TripItemView[] }) {
+export function TripBoard({
+  tripId,
+  destination,
+  currency,
+  rates,
+  days,
+  items,
+}: {
+  tripId: string
+  destination: string
+  /** The trip's local currency, preselected for new costs. */
+  currency: string | null
+  rates: Record<string, TripRate>
+  days: TripDayView[]
+  items: TripItemView[]
+}) {
   const [columns, setColumns] = useState<Columns>(() => buildColumns(days, items))
   const [done, setDone] = useState<Record<string, boolean>>(() => Object.fromEntries(items.map((i) => [i.id, i.done])))
   const [removed, setRemoved] = useState<Set<string>>(new Set())
@@ -211,16 +223,16 @@ export function TripBoard({ tripId, destination, days, items }: { tripId: string
                     if (!item) return null
                     return editing === id ? (
                       <li key={id}>
-                        <TripItemForm tripId={tripId} days={days} item={item} onCancel={() => setEditing(null)} />
+                        <TripItemForm tripId={tripId} days={days} currency={currency} item={item} onCancel={() => setEditing(null)} />
                       </li>
                     ) : (
-                      <SortableItem key={id} item={item} done={!!done[id]} destination={destination} onToggle={(v) => toggleDone(id, v)} onEdit={() => setEditing(id)} onRemove={() => remove(item)} />
+                      <SortableItem key={id} item={item} done={!!done[id]} destination={destination} rates={rates} onToggle={(v) => toggleDone(id, v)} onEdit={() => setEditing(id)} onRemove={() => remove(item)} />
                     )
                   })}
                 </Column>
                 {adding === s.col ? (
                   <div className="mt-2">
-                    <TripItemForm tripId={tripId} days={days} day={s.day} onCancel={() => setAdding(null)} />
+                    <TripItemForm tripId={tripId} days={days} currency={currency} day={s.day} onCancel={() => setAdding(null)} />
                   </div>
                 ) : (
                   <button type="button" onClick={() => setAdding(s.col)} className="mt-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-sm text-primary hover:bg-surface-2">
@@ -231,7 +243,7 @@ export function TripBoard({ tripId, destination, days, items }: { tripId: string
             )
           })}
         </div>
-        <DragOverlay>{active ? <ItemCard item={active} done={!!done[active.id]} destination={destination} overlay /> : null}</DragOverlay>
+        <DragOverlay>{active ? <ItemCard item={active} done={!!done[active.id]} destination={destination} rates={rates} overlay /> : null}</DragOverlay>
       </DndContext>
     </div>
   )
@@ -249,7 +261,15 @@ function Column({ id, ids, children }: { id: string; ids: string[]; children: Re
   )
 }
 
-function SortableItem(props: { item: TripItemView; done: boolean; destination: string; onToggle: (v: boolean) => void; onEdit: () => void; onRemove: () => void }) {
+function SortableItem(props: {
+  item: TripItemView
+  done: boolean
+  destination: string
+  rates: Record<string, TripRate>
+  onToggle: (v: boolean) => void
+  onEdit: () => void
+  onRemove: () => void
+}) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: props.item.id })
   return (
     <li ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cx(isDragging && 'opacity-40')}>
@@ -276,6 +296,7 @@ function ItemCard({
   item,
   done,
   destination,
+  rates,
   handle,
   overlay,
   onToggle,
@@ -285,6 +306,7 @@ function ItemCard({
   item: TripItemView
   done: boolean
   destination: string
+  rates: Record<string, TripRate>
   handle?: React.ReactNode
   overlay?: boolean
   onToggle?: (v: boolean) => void
@@ -294,7 +316,7 @@ function ItemCard({
   const [showMedia, setShowMedia] = useState(false)
   const mapsLink = itemMapsLink(item, destination)
   const media = hasPlaceMedia(item) && !overlay
-  const meta = [TRIP_KIND_LABEL[item.kind], item.points ? `${item.points.toLocaleString('en-US')} pts` : null, item.costUsd ? money(item.costUsd) : null].filter(Boolean)
+  const meta = [TRIP_KIND_LABEL[item.kind], item.points ? `${item.points.toLocaleString('en-US')} pts` : null, item.costAmount ? costLabel(item.costAmount, item.costCurrency, rates) : null].filter(Boolean)
   return (
     <div className={cx('rounded-xl border border-line bg-bg p-2.5', overlay && 'shadow-lg ring-2 ring-primary/40')}>
       <div className="flex items-start gap-2">
