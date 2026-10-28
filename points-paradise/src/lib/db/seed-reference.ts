@@ -432,6 +432,18 @@ export const DATA_SOURCE_SEED: SourceInsert[] = [
     docsUrl: 'https://commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia',
   },
   {
+    id: 'google_links',
+    name: 'Google share links (redirect only)',
+    sourceType: 'Reads the place behind a pasted Google link',
+    authRequirements: 'None',
+    freeTier: 'Free',
+    rateLimits: 'One request per short link you paste (share.google, maps.app.goo.gl, g.co)',
+    usageRestrictions: 'Only the redirect address is read, never the Google page itself. No Google API or key is used.',
+    freshness: 'Cached for 90 days with the place lookup',
+    reliability: 'Depends on Google keeping its link formats; unreadable links are listed in Usage',
+    healthStatus: 'ok',
+  },
+  {
     id: 'frankfurter',
     name: 'Frankfurter (European Central Bank rates)',
     sourceType: 'Exchange rates for trip costs',

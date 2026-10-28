@@ -1,7 +1,7 @@
-import { and, eq, isNull, or, isNotNull } from 'drizzle-orm'
+import { and, eq, isNull, ne, or, isNotNull } from 'drizzle-orm'
 import type { AppDb } from '../db/client'
-import { dataSources, placeLookups, tripItems, trips, type PlacePhoto } from '../db/schema'
-import { expandShortMapsLink, isGoogleMapsLink, isShortMapsLink, parseGoogleMapsLink } from '../places/google-maps-link'
+import { dataSources, placeLookups, tripItems, trips, type PlacePhoto, type TripItemKind } from '../db/schema'
+import { expandGoogleLink, isGooglePlaceLink, isGoogleShortLink, parseGoogleLink } from '../places/google-maps-link'
 import { geocode } from '../providers/nominatim'
 import { findPlacePhoto } from '../providers/wikimedia'
 import { dayStart, logJob, requestsSince } from './usage'
@@ -10,7 +10,7 @@ export interface PlaceMedia {
   lat: number | null
   lng: number | null
   span: number | null
-  /** The place's name when it came from a link (used when the item has no place yet). */
+  /** The place's name, from a link or found from the item's title (used when the item has no place yet). */
   name: string | null
   photo: PlacePhoto | null
 }
@@ -23,6 +23,8 @@ export interface PlaceDeps {
 }
 
 const CACHE_DAYS = 90
+/** "Nothing found" is only remembered briefly, so a fix or a new source gets a fresh try. */
+const MISS_CACHE_HOURS = 24
 const DEFAULT_SPAN = 0.01
 /** Self-imposed daily caps, well inside what the free services tolerate. */
 const DAILY_CAP = { nominatim: 300, wikimedia: 1500 }
@@ -36,8 +38,17 @@ async function searchSlot(minIntervalMs: number) {
   if (wait > 0) await new Promise((r) => setTimeout(r, wait))
 }
 
-function cacheKey(url: string | null, place: string | null, destination: string): string {
-  return `v1|${(url ?? '').trim()}|${(place ?? '').trim().toLowerCase()}|${destination.trim().toLowerCase()}`.slice(0, 1000)
+function cacheKey(url: string | null, place: string | null, title: string | null, destination: string): string {
+  return `v2|${(url ?? '').trim()}|${(place ?? '').trim().toLowerCase()}|${(title ?? '').toLowerCase()}|${destination.trim().toLowerCase()}`.slice(0, 1000)
+}
+
+/** An item title as a place search ("Capela das Almas"), or null when it can't be one. */
+function titleQuery(title: string | null | undefined): string | null {
+  const t = (title ?? '')
+    .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return t.length >= 3 ? t.slice(0, 120) : null
 }
 
 async function enabled(db: AppDb, id: 'nominatim' | 'wikimedia', now: Date): Promise<boolean> {
@@ -46,20 +57,36 @@ async function enabled(db: AppDb, id: 'nominatim' | 'wikimedia', now: Date): Pro
   return (await requestsSince(db, id, dayStart(now))) < DAILY_CAP[id]
 }
 
-/**
- * Finds where a place is and a photo of it: from a Google Maps link when
- * there is one, otherwise by searching OpenStreetMap for the place name near
- * the trip's destination. Results are cached for 90 days.
- */
-export async function lookupPlace(db: AppDb, input: { url: string | null; place: string | null; destination: string }, deps: PlaceDeps): Promise<PlaceMedia | null> {
-  const placeIsLink = !!input.place && isGoogleMapsLink(input.place)
-  const link = input.url && isGoogleMapsLink(input.url) ? input.url : placeIsLink ? input.place : null
-  const typed = input.place && !placeIsLink ? input.place.trim() : null
-  if (!link && !typed) return null
+export interface PlaceInput {
+  url: string | null
+  place: string | null
+  /** The item's title, searched when there is no place and the link doesn't say where. */
+  title?: string | null
+  kind?: TripItemKind
+  destination: string
+}
 
-  const key = cacheKey(link, typed, input.destination)
+/**
+ * Finds where a place is and a photo of it: from a Google link when there is
+ * one (Maps links, or share.google / g.co links that lead to a named place),
+ * otherwise by searching OpenStreetMap for the place, or the item's title,
+ * near the trip's destination. Found places are cached for 90 days, misses
+ * for a day.
+ */
+export async function lookupPlace(db: AppDb, input: PlaceInput, deps: PlaceDeps): Promise<PlaceMedia | null> {
+  const placeIsLink = !!input.place && isGooglePlaceLink(input.place)
+  const link = input.url && isGooglePlaceLink(input.url) ? input.url : placeIsLink ? input.place : null
+  const typed = input.place && !placeIsLink && !/^https?:\/\//i.test(input.place.trim()) ? input.place.trim() : null
+  const title = !typed && input.kind !== 'note' ? titleQuery(input.title) : null
+  if (!link && !typed && !title) return null
+
+  const key = cacheKey(link, typed, title, input.destination)
   const [cached] = await db.select().from(placeLookups).where(eq(placeLookups.key, key))
-  if (cached && deps.now.getTime() - cached.fetchedAt.getTime() < CACHE_DAYS * 86_400_000) return cached.value as PlaceMedia
+  if (cached) {
+    const age = deps.now.getTime() - cached.fetchedAt.getTime()
+    const hit = (cached.value as PlaceMedia).lat != null
+    if (age < (hit ? CACHE_DAYS * 86_400_000 : MISS_CACHE_HOURS * 3_600_000)) return cached.value as PlaceMedia
+  }
 
   const startedAt = new Date()
   let name: string | null = null
@@ -68,20 +95,36 @@ export async function lookupPlace(db: AppDb, input: { url: string | null; place:
   let span: number | null = null
   let wikipedia: string | null = null
   let wikidata: string | null = null
+  let foundName: string | null = null
   let searches = 0
   let photoRequests = 0
   try {
     if (link) {
-      const full = isShortMapsLink(link) ? await expandShortMapsLink(link, deps.fetch) : link
-      const info = full ? parseGoogleMapsLink(full) : null
+      const short = isGoogleShortLink(link)
+      const full = short ? await expandGoogleLink(link, deps.fetch) : link
+      const info = full ? parseGoogleLink(full) : null
       name = info?.name ?? null
       lat = info?.lat ?? null
       lng = info?.lng ?? null
+      // Recorded in Settings → Usage, so a link style the app can't read yet shows up.
+      await logJob(db, {
+        provider: 'google_links',
+        jobType: 'place_link',
+        params: { host: new URL(link).hostname, readable: !!info, found: info ? (info.lat != null ? 'position' : 'name') : 'nothing' },
+        status: info ? 'succeeded' : 'failed',
+        startedAt,
+        requestCount: short ? 1 : 0,
+        error: info ? undefined : 'Could not read a place from this link',
+      })
     }
-    const searchName = name ?? typed
+    const fromTitle = !name && !typed && !!title
+    const searchName = name ?? typed ?? title
     if ((lat == null || lng == null) && searchName && (await enabled(db, 'nominatim', deps.now))) {
       const dest = input.destination.trim()
-      const queries = dest && !searchName.toLowerCase().includes(dest.toLowerCase()) ? [`${searchName}, ${dest}`, searchName] : [searchName]
+      const near = dest && !searchName.toLowerCase().includes(dest.toLowerCase()) ? `${searchName}, ${dest}` : searchName
+      // A title is only searched near the destination (never worldwide), and also without any "(…)" aside.
+      const bare = searchName.replace(/\s*\([^)]*\)\s*/g, ' ').trim()
+      const queries = fromTitle ? [near, ...(bare && bare !== searchName ? [dest ? `${bare}, ${dest}` : bare] : [])] : near === searchName ? [searchName] : [near, searchName]
       for (const q of queries) {
         await searchSlot(deps.minIntervalMs ?? 1100)
         searches++
@@ -92,6 +135,7 @@ export async function lookupPlace(db: AppDb, input: { url: string | null; place:
         span = hit.span
         wikipedia = hit.wikipedia
         wikidata = hit.wikidata
+        foundName = hit.name
         break
       }
     }
@@ -101,7 +145,14 @@ export async function lookupPlace(db: AppDb, input: { url: string | null; place:
       photo = r.photo
       photoRequests = r.requests
     }
-    const media: PlaceMedia = { lat, lng, span: span == null ? null : Math.min(2, Math.max(DEFAULT_SPAN / 2, span)), name, photo }
+    const media: PlaceMedia = {
+      lat,
+      lng,
+      span: span == null ? null : Math.min(2, Math.max(DEFAULT_SPAN / 2, span)),
+      // When the title was searched, show the name of what was found, so a wrong pin is easy to spot.
+      name: name ?? (fromTitle && lat != null ? foundName : null),
+      photo,
+    }
     await db
       .insert(placeLookups)
       .values({ key, value: media, fetchedAt: deps.now })
@@ -126,11 +177,11 @@ export async function enrichTripItem(db: AppDb, userId: string, itemId: string, 
   if (!row) return { map: false, photo: false }
   let media: PlaceMedia | null = null
   try {
-    media = await lookupPlace(db, { url: row.item.url, place: row.item.place, destination: row.destination }, deps)
+    media = await lookupPlace(db, { url: row.item.url, place: row.item.place, title: row.item.title, kind: row.item.kind, destination: row.destination }, deps)
   } catch {
     media = null
   }
-  const placeIsLink = !!row.item.place && isGoogleMapsLink(row.item.place)
+  const placeIsLink = !!row.item.place && isGooglePlaceLink(row.item.place)
   await db
     .update(tripItems)
     .set({
@@ -139,18 +190,18 @@ export async function enrichTripItem(db: AppDb, userId: string, itemId: string, 
       mapSpan: media?.span ?? null,
       photo: media?.photo ?? null,
       mediaCheckedAt: deps.now,
-      // A Google Maps link pasted as the place becomes the link, and its name the place.
+      // A Google link pasted as the place becomes the link, and its name the place.
       ...(placeIsLink ? { url: row.item.url ?? row.item.place, place: media?.name ?? null } : !row.item.place && media?.name ? { place: media.name } : {}),
     })
     .where(eq(tripItems.id, itemId))
   return { map: media?.lat != null, photo: !!media?.photo }
 }
 
-/** Items in a trip that have a place or a link but were never looked up (for example, added before maps existed). */
+/** Items in a trip not looked up yet (for example, added before maps existed). Notes count only with a place or link. */
 export async function itemsNeedingMedia(db: AppDb, userId: string, tripId: string) {
   return db
     .select({ id: tripItems.id })
     .from(tripItems)
     .innerJoin(trips, eq(trips.id, tripItems.tripId))
-    .where(and(eq(trips.id, tripId), eq(trips.userId, userId), isNull(tripItems.mediaCheckedAt), or(isNotNull(tripItems.place), isNotNull(tripItems.url))))
+    .where(and(eq(trips.id, tripId), eq(trips.userId, userId), isNull(tripItems.mediaCheckedAt), or(ne(tripItems.kind, 'note'), isNotNull(tripItems.place), isNotNull(tripItems.url))))
 }

@@ -100,8 +100,9 @@ export async function saveTripItemAction(_prev: TripItemFormState, fd: FormData)
   const itemId = fd.get('itemId')
   const r = itemId ? await updateTripItem(db, userId, String(itemId), parsed.data) : await addTripItem(db, userId, tripId.data, parsed.data)
   if (!r.ok) return { error: r.error }
-  const lookUp = itemId ? 'placeChanged' in r && r.placeChanged : parsed.data.place != null || parsed.data.url != null
-  if (lookUp && (parsed.data.place || parsed.data.url)) await enrichTripItem(db, userId, r.id, placeDeps())
+  // New items are looked up unless they are plain notes; edits only when where-it-is changed.
+  const lookUp = itemId ? 'placeChanged' in r && r.placeChanged : parsed.data.kind !== 'note' || parsed.data.place != null || parsed.data.url != null
+  if (lookUp) await enrichTripItem(db, userId, r.id, placeDeps())
   if (parsed.data.costAmount != null && parsed.data.costCurrency !== 'USD') await ensureTripRates(db, userId, tripId.data, [parsed.data.costCurrency], rateDeps())
   refresh(tripId.data)
   return { error: null, ok: itemId ? 'Saved.' : 'Added.' }

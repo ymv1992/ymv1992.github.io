@@ -226,7 +226,9 @@ export async function updateTripItem(db: AppDb, userId: string, itemId: string, 
   if (!found) return { ok: false, error: 'Not found' }
   if (input.day != null && input.day > tripDayCount(found.trip)) return { ok: false, error: `This trip has ${tripDayCount(found.trip)} days` }
   const moved = input.day !== found.item.day
-  const placeChanged = input.place !== found.item.place || input.url !== found.item.url
+  // With no place or link, the title is what gets searched, so a new title counts as a new place.
+  const placeChanged =
+    input.place !== found.item.place || input.url !== found.item.url || (!input.place && !input.url && (input.title !== found.item.title || input.kind !== found.item.kind))
   await db
     .update(tripItems)
     .set({
