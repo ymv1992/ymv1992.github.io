@@ -22,9 +22,11 @@ import {
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { arrangeTripAction, deleteTripItemAction, setTripItemDoneAction } from '@/app/actions/trip-actions'
-import { TRIP_KIND_LABEL, dayHeading, mapsUrl, type TripDayView, type TripItemView } from '@/lib/trips/shared'
+import { isGoogleMapsLink } from '@/lib/places/google-maps-link'
+import { TRIP_KIND_LABEL, dayHeading, itemMapsLink, type TripDayView, type TripItemView } from '@/lib/trips/shared'
 import { Icon } from '../icons'
 import { cx } from '../ui'
+import { hasPlaceMedia, PlaceMediaPanel, PlaceThumb } from './place-media'
 import { TripItemForm } from './trip-item-form'
 
 const IDEAS = 'ideas'
@@ -212,15 +214,7 @@ export function TripBoard({ tripId, destination, days, items }: { tripId: string
                         <TripItemForm tripId={tripId} days={days} item={item} onCancel={() => setEditing(null)} />
                       </li>
                     ) : (
-                      <SortableItem
-                        key={id}
-                        item={item}
-                        done={!!done[id]}
-                        destination={destination}
-                        onToggle={(v) => toggleDone(id, v)}
-                        onEdit={() => setEditing(id)}
-                        onRemove={() => remove(item)}
-                      />
+                      <SortableItem key={id} item={item} done={!!done[id]} destination={destination} onToggle={(v) => toggleDone(id, v)} onEdit={() => setEditing(id)} onRemove={() => remove(item)} />
                     )
                   })}
                 </Column>
@@ -259,7 +253,21 @@ function SortableItem(props: { item: TripItemView; done: boolean; destination: s
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: props.item.id })
   return (
     <li ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cx(isDragging && 'opacity-40')}>
-      <ItemCard {...props} handle={<button type="button" ref={setActivatorNodeRef} {...attributes} {...listeners} aria-label={`Move ${props.item.title}`} className="-ml-1 cursor-grab touch-none rounded-md p-1 text-faint hover:bg-surface-2 hover:text-ink active:cursor-grabbing"><Icon name="grip" strokeWidth={3} /></button>} />
+      <ItemCard
+        {...props}
+        handle={
+          <button
+            type="button"
+            ref={setActivatorNodeRef}
+            {...attributes}
+            {...listeners}
+            aria-label={`Move ${props.item.title}`}
+            className="-ml-1 cursor-grab touch-none rounded-md p-1 text-faint hover:bg-surface-2 hover:text-ink active:cursor-grabbing"
+          >
+            <Icon name="grip" strokeWidth={3} />
+          </button>
+        }
+      />
     </li>
   )
 }
@@ -283,60 +291,66 @@ function ItemCard({
   onEdit?: () => void
   onRemove?: () => void
 }) {
-  const meta = [
-    TRIP_KIND_LABEL[item.kind],
-    item.points ? `${item.points.toLocaleString('en-US')} pts` : null,
-    item.costUsd ? money(item.costUsd) : null,
-  ].filter(Boolean)
+  const [showMedia, setShowMedia] = useState(false)
+  const mapsLink = itemMapsLink(item, destination)
+  const media = hasPlaceMedia(item) && !overlay
+  const meta = [TRIP_KIND_LABEL[item.kind], item.points ? `${item.points.toLocaleString('en-US')} pts` : null, item.costUsd ? money(item.costUsd) : null].filter(Boolean)
   return (
-    <div className={cx('flex items-start gap-2 rounded-xl border border-line bg-bg p-2.5', overlay && 'shadow-lg ring-2 ring-primary/40')}>
-      {handle ?? (
-        <span className="-ml-1 p-1 text-faint">
-          <Icon name="grip" strokeWidth={3} />
-        </span>
-      )}
-      <input
-        type="checkbox"
-        checked={done}
-        onChange={(e) => onToggle?.(e.target.checked)}
-        aria-label={`Done: ${item.title}`}
-        className="mt-1 size-5 shrink-0 accent-[var(--primary)]"
-      />
-      <div className="min-w-0 flex-1">
-        <p className={cx('text-sm', done && 'text-muted line-through')}>
-          {item.time && <span className="tabular mr-1.5 text-muted">{item.time}</span>}
-          <span className="font-semibold">{item.title}</span>
-        </p>
-        <p className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-muted">
-          <span>{meta.join(' · ')}</span>
-          {item.place && (
-            <a href={mapsUrl(item.place, destination)} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-2 hover:underline">
-              {item.place} ↗
-            </a>
-          )}
-          {item.url && (
-            <a href={item.url} target="_blank" rel="noopener noreferrer nofollow" className="text-primary underline-offset-2 hover:underline">
-              Link ↗
-            </a>
-          )}
-          {item.dealId && (
-            <Link href={`/deals/${item.dealId}`} className="text-primary underline-offset-2 hover:underline">
-              View deal
-            </Link>
-          )}
-        </p>
-        {item.notes && <p className="mt-1 text-xs whitespace-pre-line">{item.notes}</p>}
-      </div>
-      {!overlay && (
-        <div className="flex shrink-0 gap-0.5">
-          <button type="button" onClick={onEdit} aria-label={`Edit ${item.title}`} className="rounded-md p-1.5 text-muted hover:bg-surface-2 hover:text-ink">
-            <Icon name="pencil" className="size-4" />
-          </button>
-          <button type="button" onClick={onRemove} aria-label={`Remove ${item.title}`} className="rounded-md p-1.5 text-muted hover:bg-danger-soft hover:text-danger">
-            <Icon name="trash" className="size-4" />
-          </button>
+    <div className={cx('rounded-xl border border-line bg-bg p-2.5', overlay && 'shadow-lg ring-2 ring-primary/40')}>
+      <div className="flex items-start gap-2">
+        {handle ?? (
+          <span className="-ml-1 p-1 text-faint">
+            <Icon name="grip" strokeWidth={3} />
+          </span>
+        )}
+        <input type="checkbox" checked={done} onChange={(e) => onToggle?.(e.target.checked)} aria-label={`Done: ${item.title}`} className="mt-1 size-5 shrink-0 accent-[var(--primary)]" />
+        <div className="min-w-0 flex-1">
+          <p className={cx('text-sm', done && 'text-muted line-through')}>
+            {item.time && <span className="tabular mr-1.5 text-muted">{item.time}</span>}
+            <span className="font-semibold">{item.title}</span>
+          </p>
+          <p className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-muted">
+            <span>{meta.join(' · ')}</span>
+            {item.place && mapsLink && (
+              <a href={mapsLink} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-2 hover:underline">
+                {item.place} ↗
+              </a>
+            )}
+            {media && (
+              <button type="button" onClick={() => setShowMedia((v) => !v)} aria-expanded={showMedia} className="text-primary underline-offset-2 hover:underline">
+                {showMedia ? 'Hide' : item.photo ? 'Photo & map' : 'Map'}
+              </button>
+            )}
+            {item.url && !(item.place && isGoogleMapsLink(item.url)) && (
+              <a href={item.url} target="_blank" rel="noopener noreferrer nofollow" className="text-primary underline-offset-2 hover:underline">
+                Link ↗
+              </a>
+            )}
+            {item.dealId && (
+              <Link href={`/deals/${item.dealId}`} className="text-primary underline-offset-2 hover:underline">
+                View deal
+              </Link>
+            )}
+          </p>
+          {item.notes && <p className="mt-1 text-xs whitespace-pre-line">{item.notes}</p>}
         </div>
-      )}
+        {item.photo && (
+          <button type="button" onClick={() => setShowMedia((v) => !v)} aria-label={`${showMedia ? 'Hide' : 'Show'} photo and map of ${item.place ?? item.title}`} className="shrink-0">
+            <PlaceThumb item={item} />
+          </button>
+        )}
+        {!overlay && (
+          <div className="flex shrink-0 gap-0.5">
+            <button type="button" onClick={onEdit} aria-label={`Edit ${item.title}`} className="rounded-md p-1.5 text-muted hover:bg-surface-2 hover:text-ink">
+              <Icon name="pencil" className="size-4" />
+            </button>
+            <button type="button" onClick={onRemove} aria-label={`Remove ${item.title}`} className="rounded-md p-1.5 text-muted hover:bg-danger-soft hover:text-danger">
+              <Icon name="trash" className="size-4" />
+            </button>
+          </div>
+        )}
+      </div>
+      {media && showMedia && <PlaceMediaPanel item={item} destination={destination} />}
     </div>
   )
 }

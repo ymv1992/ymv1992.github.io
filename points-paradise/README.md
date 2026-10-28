@@ -383,6 +383,18 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
   - **Share with a partner.** Turns on a read-only link (`/share/<token>`)
     that shows only that trip and isn't indexed by search engines. Stopping
     sharing turns the link off.
+  - **Maps and photos.** Paste a Google Maps link (including short
+    `maps.app.goo.gl` links), or fill in a place, and the item shows a map
+    with a pin and, for well-known places, a real photo. The place is read
+    straight from the link, or found with OpenStreetMap's free place
+    search near the trip's destination. Photos come from Wikipedia and
+    Wikimedia Commons, freely licensed and shown with the photographer and
+    licence. A photo is used only when the article's name matches the place
+    and it is close to the pin, so most restaurants and shops get a map but
+    no photo. Each place is looked up once and the result is kept for 90
+    days. Daily caps keep usage light (300 OpenStreetMap searches, 1,500
+    Wikimedia requests). **Find maps & photos** fills in items added before
+    this existed. No keys, no cost.
   - **Download PDF.** Downloads the itinerary with tick boxes, from your
     page or the share link. The PDF uses the standard built-in fonts, so
     letters outside Western European alphabets print as "?" and emoji are

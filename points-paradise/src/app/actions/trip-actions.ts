@@ -9,6 +9,7 @@ import { tripItems } from '@/lib/db/schema'
 import { loadAccount } from '@/lib/data/account'
 import { getDeal } from '@/lib/data/deals'
 import { evaluateMany } from '@/lib/data/evaluation'
+import { enrichTripItem, itemsNeedingMedia } from '@/lib/data/place-media'
 import {
   addDealToTrip,
   addTripItem,
@@ -33,6 +34,10 @@ import { requireUserId } from '@/lib/server/session'
 import type { FormState } from '@/components/action-form'
 
 const uuid = z.string().uuid()
+/** Most items still unlooked-up that one "Find maps & photos" press handles (OpenStreetMap allows one search a second). */
+const MEDIA_BATCH = 8
+
+const placeDeps = () => ({ fetch, now: new Date() })
 
 function firstIssue(err: z.ZodError): string {
   return err.issues[0]?.message ?? 'Please check the form'
@@ -88,6 +93,8 @@ export async function saveTripItemAction(_prev: TripItemFormState, fd: FormData)
   const itemId = fd.get('itemId')
   const r = itemId ? await updateTripItem(db, userId, String(itemId), parsed.data) : await addTripItem(db, userId, tripId.data, parsed.data)
   if (!r.ok) return { error: r.error }
+  const lookUp = itemId ? 'placeChanged' in r && r.placeChanged : parsed.data.place != null || parsed.data.url != null
+  if (lookUp && (parsed.data.place || parsed.data.url)) await enrichTripItem(db, userId, r.id, placeDeps())
   refresh(tripId.data)
   return { error: null, ok: itemId ? 'Saved.' : 'Added.' }
 }
@@ -130,6 +137,7 @@ export async function addDealToTripAction(_prev: FormState, fd: FormData): Promi
   const chasePoints = (await evaluateMany(db, userId, [deal.id])).get(deal.id)?.valuation.chasePoints ?? null
   const r = await addDealToTrip(db, userId, tripId.data, deal, chasePoints)
   if (!r.ok) return { error: r.error }
+  await enrichTripItem(db, userId, r.id, placeDeps())
   refresh(tripId.data)
   return { error: null, ok: 'Added to the trip.' }
 }
@@ -168,4 +176,21 @@ export async function unwatchTripAction(tripId: string): Promise<void> {
   await unwatchTrip(await getDb(), userId, tripId)
   revalidatePath('/alerts')
   refresh(tripId)
+}
+
+/** Looks up maps and photos for items that don't have them yet, a few at a time. */
+export async function findTripMediaAction(tripId: string): Promise<{ checked: number; maps: number; photos: number; remaining: number }> {
+  const userId = await requireUserId()
+  if (!uuid.safeParse(tripId).success) return { checked: 0, maps: 0, photos: 0, remaining: 0 }
+  const db = await getDb()
+  const todo = await itemsNeedingMedia(db, userId, tripId)
+  let maps = 0
+  let photos = 0
+  for (const { id } of todo.slice(0, MEDIA_BATCH)) {
+    const r = await enrichTripItem(db, userId, id, placeDeps())
+    if (r.map) maps++
+    if (r.photo) photos++
+  }
+  refresh(tripId)
+  return { checked: Math.min(todo.length, MEDIA_BATCH), maps, photos, remaining: Math.max(0, todo.length - MEDIA_BATCH) }
 }

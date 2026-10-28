@@ -72,13 +72,14 @@ export function TripItemForm({
         <label htmlFor={`${p}-place`} className="label">
           Place or address <span className="text-faint">(optional)</span>
         </label>
-        <input id={`${p}-place`} name="place" maxLength={200} defaultValue={item?.place ?? ''} placeholder="Ma'alaea Harbor" className="field" />
+        <input id={`${p}-place`} name="place" maxLength={200} defaultValue={item?.place ?? ''} placeholder="Molokini Crater, or a Google Maps link" className="field" />
       </div>
       <div className="sm:col-span-3">
         <label htmlFor={`${p}-url`} className="label">
           Link <span className="text-faint">(optional)</span>
         </label>
         <input id={`${p}-url`} name="url" type="url" maxLength={500} defaultValue={item?.url ?? ''} placeholder="https://" className="field" />
+        <p className="mt-1 text-xs text-muted">Paste a Google Maps link (or fill in the place) and a map and photo are added.</p>
       </div>
       <div className="sm:col-span-3">
         <label htmlFor={`${p}-cost`} className="label">

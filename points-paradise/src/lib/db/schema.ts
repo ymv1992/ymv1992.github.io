@@ -379,8 +379,18 @@ export const watchlists = pgTable(
 
 // ─── Trips (itinerary builder) ───────────────────────────────────────────────
 
-/** Itinerary item types; labels live in lib/data/trips.ts. */
+/** Itinerary item types; labels live in lib/trips/shared.ts. */
 export type TripItemKind = 'flight' | 'hotel' | 'activity' | 'food' | 'transport' | 'note'
+
+/** A freely licensed photo of a place, with the credit its licence requires. */
+export interface PlacePhoto {
+  url: string
+  /** The file's page on Wikimedia Commons (credit and licence details). */
+  pageUrl: string
+  credit: string
+  license: string
+  source: 'wikimedia'
+}
 
 export const trips = pgTable(
   'trips',
@@ -429,11 +439,26 @@ export const tripItems = pgTable(
     notes: text('notes'),
     done: boolean('done').notNull().default(false),
     dealId: uuid('deal_id').references(() => deals.id, { onDelete: 'set null' }),
+    /** Where the place is, from a Google Maps link or a place search. */
+    lat: doublePrecision('lat'),
+    lng: doublePrecision('lng'),
+    /** Rough size of the place in degrees, so a city shows wider than a café. */
+    mapSpan: doublePrecision('map_span'),
+    photo: jsonb('photo').$type<PlacePhoto>(),
+    /** When the map and photo were last looked up; null means not yet. */
+    mediaCheckedAt: ts('media_checked_at'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [index('trip_items_trip_idx').on(t.tripId, t.day, t.position)],
 )
+
+/** Cached place lookups (map position and photo), so each place is looked up once. */
+export const placeLookups = pgTable('place_lookups', {
+  key: text('key').primaryKey(),
+  value: jsonb('value').$type<unknown>().notNull(),
+  fetchedAt: ts('fetched_at').notNull().defaultNow(),
+})
 
 // ─── Signals ─────────────────────────────────────────────────────────────────
 
