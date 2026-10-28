@@ -8,6 +8,7 @@ import { getDb } from '@/lib/db/client'
 import { deals, watchlists } from '@/lib/db/schema'
 import { loadAccount } from '@/lib/data/account'
 import { evaluateMany } from '@/lib/data/evaluation'
+import { itemsNeedingMedia } from '@/lib/data/place-media'
 import { listSaved } from '@/lib/data/saved'
 import { dealsForTrip, getTrip, tripDayCount, tripDayDate, tripTotals, tripWatchWindow } from '@/lib/data/trips'
 import { CABINS, CABIN_LABELS } from '@/lib/domain/constants'
@@ -18,12 +19,15 @@ import { toItemView, type TripDayView } from '@/lib/trips/shared'
 import { ActionForm } from '@/components/action-form'
 import { Icon } from '@/components/icons'
 import { ConfirmSubmit } from '@/components/trips/confirm-submit'
+import { FindMediaButton } from '@/components/trips/find-media-button'
 import { ShareCard } from '@/components/trips/share-card'
 import { TripBoard } from '@/components/trips/trip-board'
 import { TripDetailsForm } from '@/components/trips/trip-details-form'
 import { Badge, Card, Notice, PageHeader, SectionTitle, Stat, buttonClass } from '@/components/ui'
 
 export const metadata: Metadata = { title: 'Trip' }
+// Saving an item looks up its map and photo, which can take a few seconds.
+export const maxDuration = 60
 
 /** Changes whenever the trip's items do, so the board resets to what was saved. */
 function boardVersion(items: { id: string; day: number | null; position: number; done: boolean; updatedAt: Date }[]): string {
@@ -60,6 +64,7 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
   const [watch] = trip.watchId ? await db.select().from(watchlists).where(eq(watchlists.id, trip.watchId)) : []
   const watchWindow = tripWatchWindow(trip, today)
   const short = totals.points > wallet.chaseBalance ? totals.points - wallet.chaseBalance : 0
+  const needMedia = (await itemsNeedingMedia(db, userId, trip.id)).length
 
   return (
     <div className="space-y-6">
@@ -89,6 +94,8 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
         />
         <Stat label="Cash" value={totals.cashUsd ? usd(totals.cashUsd) : '—'} />
       </Card>
+
+      {needMedia > 0 && <FindMediaButton tripId={trip.id} count={needMedia} />}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <TripBoard key={boardVersion(items)} tripId={trip.id} destination={trip.destination} days={days} items={items.map(toItemView)} />

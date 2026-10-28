@@ -3,7 +3,9 @@ import { notFound } from 'next/navigation'
 import { getDb } from '@/lib/db/client'
 import { getSharedTrip, tripDayCount, tripDayDate, tripTotals } from '@/lib/data/trips'
 import { dateRange, points, usd } from '@/lib/format'
-import { TRIP_KIND_LABEL, dayHeading, mapsUrl, type TripDayView } from '@/lib/trips/shared'
+import { isGoogleMapsLink } from '@/lib/places/google-maps-link'
+import { TRIP_KIND_LABEL, dayHeading, itemMapsLink, type TripDayView } from '@/lib/trips/shared'
+import { hasPlaceMedia, PlaceMediaPanel, PlaceThumb } from '@/components/trips/place-media'
 import { Icon } from '@/components/icons'
 import { Card, buttonClass } from '@/components/ui'
 
@@ -18,9 +20,10 @@ export default async function SharedTripPage({ params }: { params: Promise<{ tok
   const { trip, items } = data
   const days: TripDayView[] = Array.from({ length: tripDayCount(trip) }, (_, i) => ({ day: i + 1, date: tripDayDate(trip, i + 1) }))
   const totals = tripTotals(items)
-  const sections = [...days.map((d) => ({ key: `d${d.day}`, title: dayHeading(d), list: items.filter((i) => i.day === d.day) })), { key: 'ideas', title: 'Ideas', list: items.filter((i) => i.day == null) }].filter(
-    (s) => s.key !== 'ideas' || s.list.length > 0,
-  )
+  const sections = [
+    ...days.map((d) => ({ key: `d${d.day}`, title: dayHeading(d), list: items.filter((i) => i.day === d.day) })),
+    { key: 'ideas', title: 'Ideas', list: items.filter((i) => i.day == null) },
+  ].filter((s) => s.key !== 'ideas' || s.list.length > 0)
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6">
@@ -47,35 +50,42 @@ export default async function SharedTripPage({ params }: { params: Promise<{ tok
             ) : (
               <ul className="mt-2 space-y-2">
                 {s.list.map((i) => (
-                  <li key={i.id} className="flex items-start gap-3 rounded-xl border border-line bg-bg p-2.5">
-                    <span
-                      aria-label={i.done ? 'Done' : 'Not done yet'}
-                      className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border ${i.done ? 'border-primary bg-primary text-primary-ink' : 'border-line'}`}
-                    >
-                      {i.done && <Icon name="check" className="size-3.5" strokeWidth={3} />}
-                    </span>
-                    <div className="min-w-0 flex-1 text-sm">
-                      <p className={i.done ? 'text-muted line-through' : ''}>
-                        {i.time && <span className="tabular mr-1.5 text-muted">{i.time}</span>}
-                        <span className="font-semibold">{i.title}</span>
-                      </p>
-                      <p className="mt-0.5 flex flex-wrap gap-x-2 text-xs text-muted">
-                        <span>
-                          {[TRIP_KIND_LABEL[i.kind], i.points ? `${points(i.points)} pts` : null, i.costUsd ? usd(i.costUsd) : null].filter(Boolean).join(' · ')}
-                        </span>
-                        {i.place && (
-                          <a href={mapsUrl(i.place, trip.destination)} target="_blank" rel="noopener noreferrer" className="text-primary">
-                            {i.place} ↗
-                          </a>
-                        )}
-                        {i.url && (
-                          <a href={i.url} target="_blank" rel="noopener noreferrer nofollow" className="text-primary">
-                            Link ↗
-                          </a>
-                        )}
-                      </p>
-                      {i.notes && <p className="mt-1 text-xs whitespace-pre-line">{i.notes}</p>}
+                  <li key={i.id} className="rounded-xl border border-line bg-bg p-2.5">
+                    <div className="flex items-start gap-3">
+                      <span
+                        aria-label={i.done ? 'Done' : 'Not done yet'}
+                        className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border ${i.done ? 'border-primary bg-primary text-primary-ink' : 'border-line'}`}
+                      >
+                        {i.done && <Icon name="check" className="size-3.5" strokeWidth={3} />}
+                      </span>
+                      <div className="min-w-0 flex-1 text-sm">
+                        <p className={i.done ? 'text-muted line-through' : ''}>
+                          {i.time && <span className="tabular mr-1.5 text-muted">{i.time}</span>}
+                          <span className="font-semibold">{i.title}</span>
+                        </p>
+                        <p className="mt-0.5 flex flex-wrap gap-x-2 text-xs text-muted">
+                          <span>{[TRIP_KIND_LABEL[i.kind], i.points ? `${points(i.points)} pts` : null, i.costUsd ? usd(i.costUsd) : null].filter(Boolean).join(' · ')}</span>
+                          {i.place && (
+                            <a href={itemMapsLink(i, trip.destination) ?? '#'} target="_blank" rel="noopener noreferrer" className="text-primary">
+                              {i.place} ↗
+                            </a>
+                          )}
+                          {i.url && !(i.place && isGoogleMapsLink(i.url)) && (
+                            <a href={i.url} target="_blank" rel="noopener noreferrer nofollow" className="text-primary">
+                              Link ↗
+                            </a>
+                          )}
+                        </p>
+                        {i.notes && <p className="mt-1 text-xs whitespace-pre-line">{i.notes}</p>}
+                      </div>
+                      <PlaceThumb item={i} />
                     </div>
+                    {hasPlaceMedia(i) && (
+                      <details className="mt-1 pl-8">
+                        <summary className="cursor-pointer text-xs text-primary">{i.photo ? 'Photo & map' : 'Map'}</summary>
+                        <PlaceMediaPanel item={i} destination={trip.destination} />
+                      </details>
+                    )}
                   </li>
                 ))}
               </ul>

@@ -43,6 +43,13 @@
       "when": 1793165675802,
       "tag": "0005_trips",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793201022500,
+      "tag": "0006_place_media",
+      "breakpoints": true
     }
   ]
 }

@@ -210,17 +210,24 @@ async function ownedItem(db: AppDb, userId: string, itemId: string): Promise<{ i
   return row ?? null
 }
 
-export async function updateTripItem(db: AppDb, userId: string, itemId: string, input: TripItemInput, now = new Date()): Promise<ItemResult> {
+/** Saves an item. `placeChanged` tells the caller to look up the map and photo again. */
+export async function updateTripItem(db: AppDb, userId: string, itemId: string, input: TripItemInput, now = new Date()): Promise<ItemResult & { placeChanged?: boolean }> {
   const found = await ownedItem(db, userId, itemId)
   if (!found) return { ok: false, error: 'Not found' }
   if (input.day != null && input.day > tripDayCount(found.trip)) return { ok: false, error: `This trip has ${tripDayCount(found.trip)} days` }
   const moved = input.day !== found.item.day
+  const placeChanged = input.place !== found.item.place || input.url !== found.item.url
   await db
     .update(tripItems)
-    .set({ ...input, ...(moved ? { position: await nextPosition(db, found.trip.id, input.day) } : {}), updatedAt: now })
+    .set({
+      ...input,
+      ...(moved ? { position: await nextPosition(db, found.trip.id, input.day) } : {}),
+      ...(placeChanged ? { lat: null, lng: null, mapSpan: null, photo: null, mediaCheckedAt: null } : {}),
+      updatedAt: now,
+    })
     .where(eq(tripItems.id, itemId))
   await touch(db, found.trip.id, now)
-  return { ok: true, id: itemId }
+  return { ok: true, id: itemId, placeChanged }
 }
 
 export async function deleteTripItem(db: AppDb, userId: string, itemId: string, now = new Date()): Promise<void> {
