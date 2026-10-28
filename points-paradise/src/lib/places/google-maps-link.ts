@@ -1,7 +1,7 @@
 /**
- * Reads the place name and position out of a Google Maps link, without
- * calling Google: the information is in the link itself. Short share links
- * (maps.app.goo.gl) only need their redirect followed.
+ * Reads the place name and position out of Google links, without calling a
+ * Google API: the information is in the link itself. Short share links
+ * (maps.app.goo.gl, share.google, g.co/kgs) only need their redirect followed.
  */
 
 export interface MapsLinkInfo {
@@ -11,7 +11,7 @@ export interface MapsLinkInfo {
 }
 
 const GOOGLE_HOST = /^(?:www\.|maps\.)?google\.(?:com|[a-z]{2,3}|co\.[a-z]{2}|com\.[a-z]{2})$/i
-const SHORT_HOSTS = new Set(['maps.app.goo.gl', 'goo.gl'])
+const CONSENT_HOST = /^consent\.google\.(?:com|[a-z]{2,3}|co\.[a-z]{2}|com\.[a-z]{2})$/i
 
 function parse(url: string): URL | null {
   try {
@@ -22,11 +22,23 @@ function parse(url: string): URL | null {
   }
 }
 
-/** maps.app.goo.gl/… or goo.gl/maps/… share links, which redirect to the full link. */
+/** maps.app.goo.gl/… or goo.gl/maps/… share links, which redirect to a full Google Maps link. */
 export function isShortMapsLink(url: string | null | undefined): boolean {
   const u = url ? parse(url) : null
-  if (!u || !SHORT_HOSTS.has(u.hostname.toLowerCase())) return false
-  return u.hostname.toLowerCase() === 'maps.app.goo.gl' || u.pathname.startsWith('/maps/')
+  if (!u) return false
+  const host = u.hostname.toLowerCase()
+  return host === 'maps.app.goo.gl' || (host === 'goo.gl' && u.pathname.startsWith('/maps/'))
+}
+
+/**
+ * Any short Google share link: Maps share links, plus share.google/… and
+ * g.co/kgs/… (places shared from Google Search or the Google app).
+ */
+export function isGoogleShortLink(url: string | null | undefined): boolean {
+  const u = url ? parse(url) : null
+  if (!u) return false
+  const host = u.hostname.toLowerCase()
+  return isShortMapsLink(url) || (host === 'share.google' && u.pathname.length > 1) || (host === 'g.co' && u.pathname.startsWith('/kgs/'))
 }
 
 export function isGoogleMapsLink(url: string | null | undefined): boolean {
@@ -36,6 +48,17 @@ export function isGoogleMapsLink(url: string | null | undefined): boolean {
   const host = u.hostname.toLowerCase()
   if (!GOOGLE_HOST.test(host)) return false
   return host.startsWith('maps.') || u.pathname.startsWith('/maps')
+}
+
+/** google.com/search?q=… (where share.google links for places usually lead). */
+function isGoogleSearchLink(url: string): boolean {
+  const u = parse(url)
+  return !!u && GOOGLE_HOST.test(u.hostname) && u.pathname === '/search' && !!u.searchParams.get('q')
+}
+
+/** A Google link that can name a place: Maps links, Google short share links and Google searches. */
+export function isGooglePlaceLink(url: string | null | undefined): boolean {
+  return !!url && (isGoogleMapsLink(url) || isGoogleShortLink(url) || isGoogleSearchLink(url))
 }
 
 function coords(lat: number, lng: number): { lat: number; lng: number } | null {
@@ -89,20 +112,40 @@ export function parseGoogleMapsLink(url: string): MapsLinkInfo | null {
   return { name, lat: point?.lat ?? null, lng: point?.lng ?? null }
 }
 
+/** Name (and position, for Maps links) from a full Google Maps or Google Search link. */
+export function parseGoogleLink(url: string): MapsLinkInfo | null {
+  if (isGoogleMapsLink(url)) return parseGoogleMapsLink(url)
+  if (!isGoogleSearchLink(url)) return null
+  const q = parse(url)!.searchParams.get('q')
+  const name = q ? decodeName(q) : null
+  return name ? { name, lat: null, lng: null } : null
+}
+
+const LINK_HEADERS = { 'User-Agent': 'Mozilla/5.0 (compatible; PointsParadise/1.0; +https://github.com/ymv1992/ymv1992.github.io)', Accept: 'text/html' }
+
 /**
- * Follows a short share link's redirects (at most 3, Google hosts only) to the
- * full link. Only the redirect address is read; nothing from the page itself.
+ * Follows a short Google share link's redirects (at most 4, Google hosts
+ * only) to the full Maps or Search link. Only the redirect address is read;
+ * nothing from the pages themselves.
  */
-export async function expandShortMapsLink(url: string, fetchImpl: typeof fetch = fetch): Promise<string | null> {
+export async function expandGoogleLink(url: string, fetchImpl: typeof fetch = fetch): Promise<string | null> {
   let current = url
-  for (let hop = 0; hop < 3; hop++) {
-    if (!isShortMapsLink(current) && isGoogleMapsLink(current)) return current
-    const res = await fetchImpl(current, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(6000) })
+  for (let hop = 0; hop < 4; hop++) {
+    if (!isGoogleShortLink(current) && parseGoogleLink(current)) return current
+    const res = await fetchImpl(current, { method: 'GET', redirect: 'manual', headers: LINK_HEADERS, signal: AbortSignal.timeout(6000) })
     const next = res.headers.get('location')
     if (res.status < 300 || res.status >= 400 || !next) return null
-    const resolved = new URL(next, current).toString()
-    if (!isGoogleMapsLink(resolved) && !isShortMapsLink(resolved)) return null
-    current = resolved
+    let resolved = new URL(next, current)
+    // A cookie-consent stop on the way: its continue= address is where the link goes.
+    if (CONSENT_HOST.test(resolved.hostname)) {
+      const cont = resolved.searchParams.get('continue')
+      const target = cont ? parse(cont) : null
+      if (!target) return null
+      resolved = target
+    }
+    const href = resolved.toString()
+    if (!isGoogleShortLink(href) && !GOOGLE_HOST.test(resolved.hostname)) return null
+    current = href
   }
-  return isGoogleMapsLink(current) && !isShortMapsLink(current) ? current : null
+  return !isGoogleShortLink(current) && parseGoogleLink(current) ? current : null
 }

@@ -98,6 +98,55 @@ describe('trip item maps and photos', () => {
     expect(failed).toMatchObject({ provider: 'nominatim', error: 'Nominatim responded 503' })
   })
 
+  it('read share.google links: the place name from the link, the pin from a search near the destination', async () => {
+    const searches: string[] = []
+    const f = router({
+      'share.google': () => new Response(null, { status: 302, headers: { location: 'https://www.google.com/search?q=Capela+das+Almas&kgmid=/g/11b6' } }),
+      'nominatim.openstreetmap.org': (u) => {
+        searches.push(u.searchParams.get('q')!)
+        return json([{ lat: '41.1492', lon: '-8.6062', name: 'Capela das Almas', boundingbox: ['41.1491', '41.1493', '-8.6063', '-8.6061'], extratags: { wikidata: 'Q2939413' } }])
+      },
+      'www.wikidata.org': () => json({ claims: { P18: [{ mainsnak: { datavalue: { value: 'Capela_das_Almas.jpg' } } }] } }),
+      'commons.wikimedia.org': () => commonsOk('Capela_das_Almas.jpg'),
+    })
+    const r = await addTripItem(db, userId, tripId, item('Beautiful church', { url: 'https://share.google/Qi3LxU6EOSquROmFc' }))
+    if (!r.ok) throw new Error(r.error)
+    expect(await enrichTripItem(db, userId, r.id, deps(f))).toEqual({ map: true, photo: true })
+    expect(searches).toEqual(['Capela das Almas, Maui, Hawaii'])
+    expect(await row(r.id)).toMatchObject({ place: 'Capela das Almas', lat: 41.1492, photo: { pageUrl: 'https://commons.wikimedia.org/wiki/File:Capela_das_Almas.jpg' } })
+  })
+
+  it('search the title near the destination when there is no place or readable link, and name what was found', async () => {
+    const searches: string[] = []
+    const f = router({
+      'nominatim.openstreetmap.org': (u) => {
+        const q = u.searchParams.get('q')!
+        searches.push(q)
+        return json(q === 'Torre dos Clérigos, Maui, Hawaii' ? [{ lat: '41.1457', lon: '-8.6146', name: 'Torre dos Clérigos' }] : [])
+      },
+      'en.wikipedia.org': () => json({ query: { pages: [] } }),
+    })
+    const r = await addTripItem(db, userId, tripId, item('Torre dos Clérigos (climb at sunset)', { url: 'https://example.com/tickets' }))
+    if (!r.ok) throw new Error(r.error)
+    expect(await enrichTripItem(db, userId, r.id, deps(f))).toEqual({ map: true, photo: false })
+    // Only near the destination, then without the "(…)" aside; never worldwide.
+    expect(searches).toEqual(['Torre dos Clérigos (climb at sunset), Maui, Hawaii', 'Torre dos Clérigos, Maui, Hawaii'])
+    expect(await row(r.id)).toMatchObject({ place: 'Torre dos Clérigos', lat: 41.1457, url: 'https://example.com/tickets' })
+  })
+
+  it('skip notes, and record links it could not read', async () => {
+    const calls: URL[] = []
+    const note = await addTripItem(db, userId, tripId, item('Travel day', { kind: 'note' }))
+    if (!note.ok) throw new Error(note.error)
+    expect(await enrichTripItem(db, userId, note.id, deps(router({}, calls)))).toEqual({ map: false, photo: false })
+    expect(calls).toHaveLength(0)
+    const r = await addTripItem(db, userId, tripId, item('Xyzzy', { url: 'https://share.google/broken' }))
+    if (!r.ok) throw new Error(r.error)
+    await enrichTripItem(db, userId, r.id, deps(router({ 'share.google': () => new Response('<html>', { status: 200 }) })))
+    const jobs = await db.select().from(searchJobs).where(eq(searchJobs.provider, 'google_links'))
+    expect(jobs.find((j) => j.status === 'failed')).toMatchObject({ jobType: 'place_link', error: 'Could not read a place from this link', params: { host: 'share.google', readable: false } })
+  })
+
   it('belong to the trip owner only', async () => {
     const other = await ensureOwnerAccount(db, 'other@example.com')
     const r = await addTripItem(db, userId, tripId, item('Private', { place: 'Haleakala National Park' }))

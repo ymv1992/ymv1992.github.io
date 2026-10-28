@@ -57,6 +57,13 @@
       "when": 1793202417323,
       "tag": "0007_trip_currencies",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793204366624,
+      "tag": "0008_retry_place_lookups",
+      "breakpoints": true
     }
   ]
 }

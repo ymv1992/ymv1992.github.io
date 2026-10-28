@@ -383,8 +383,9 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
   - **Share with a partner.** Turns on a read-only link (`/share/<token>`)
     that shows only that trip and isn't indexed by search engines. Stopping
     sharing turns the link off.
-  - **Maps and photos.** Paste a Google Maps link (including short
-    `maps.app.goo.gl` links), or fill in a place, and the item shows a map
+  - **Maps and photos.** Paste a Google link (Google Maps links, short
+    `maps.app.goo.gl` links, and `share.google` / `g.co` links shared from
+    Google Search or the Google app), or fill in a place, and the item shows a map
     with a pin and, for well-known places, a real photo. The place is read
     straight from the link, or found with OpenStreetMap's free place
     search near the trip's destination. Photos come from Wikipedia and
@@ -394,7 +395,11 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
     no photo. Each place is looked up once and the result is kept for 90
     days. Daily caps keep usage light (300 OpenStreetMap searches, 1,500
     Wikimedia requests). **Find maps & photos** fills in items added before
-    this existed. No keys, no cost.
+    this existed, or that found nothing before. With no place and no
+    readable link, the item's title is searched near the destination, and
+    the name of what was found is shown as the place, so a wrong pin is easy
+    to spot. Links the app can't read are listed in Settings → Usage. No
+    keys, no cost.
   - **Local currency.** Pick a trip's local currency in its details, then
     enter costs in that currency (or any other on the list). Each shows its
     dollar value too, such as "¥12,000 · about $80", and totals are in

@@ -1,6 +1,6 @@
 /** Google Maps links, OpenStreetMap place search and Wikimedia photos, with fake responses (TEST FIXTURES). */
 import { describe, expect, it } from 'vitest'
-import { expandShortMapsLink, isGoogleMapsLink, isShortMapsLink, parseGoogleMapsLink } from '@/lib/places/google-maps-link'
+import { expandGoogleLink, isGoogleMapsLink, isGooglePlaceLink, isGoogleShortLink, isShortMapsLink, parseGoogleLink, parseGoogleMapsLink } from '@/lib/places/google-maps-link'
 import { geocode, PLACES_USER_AGENT } from '@/lib/providers/nominatim'
 import { findPlacePhoto, titleMatch } from '@/lib/providers/wikimedia'
 import { osmEmbedUrl } from '@/lib/trips/shared'
@@ -36,10 +36,34 @@ describe('Google Maps links', () => {
     const full = 'https://www.google.com/maps/place/Molokini/@20.63,-156.49,14z/data=!3d20.6339!4d-156.4964'
     const calls: URL[] = []
     const ok = router({ 'maps.app.goo.gl': () => new Response(null, { status: 302, headers: { location: full } }) }, calls)
-    expect(await expandShortMapsLink('https://maps.app.goo.gl/AbC', ok)).toBe(full)
+    expect(await expandGoogleLink('https://maps.app.goo.gl/AbC', ok)).toBe(full)
     expect(calls).toHaveLength(1)
     const evil = router({ 'maps.app.goo.gl': () => new Response(null, { status: 302, headers: { location: 'https://evil.example/x' } }) })
-    expect(await expandShortMapsLink('https://maps.app.goo.gl/AbC', evil)).toBeNull()
+    expect(await expandGoogleLink('https://maps.app.goo.gl/AbC', evil)).toBeNull()
+  })
+
+  it('read share.google links, which lead to a Google search for the place', async () => {
+    const link = 'https://share.google/Qi3LxU6EOSquROmFc'
+    expect(isGoogleShortLink(link)).toBe(true)
+    expect(isGooglePlaceLink(link)).toBe(true)
+    expect(isGoogleMapsLink(link)).toBe(false)
+    expect(isGoogleShortLink('https://g.co/kgs/AbCd')).toBe(true)
+    expect(isGoogleShortLink('https://share.google/')).toBe(false)
+    const search = 'https://www.google.com/search?q=Capela+das+Almas&kgmid=/g/11b6&shem=abc&utm_source=share'
+    const f = router({ 'share.google': () => new Response(null, { status: 302, headers: { location: search } }) })
+    const full = await expandGoogleLink(link, f)
+    expect(full).toBe(search)
+    expect(parseGoogleLink(full!)).toEqual({ name: 'Capela das Almas', lat: null, lng: null })
+  })
+
+  it('step past a cookie-consent page to where the link goes', async () => {
+    const target = 'https://www.google.com/maps/place/Livraria+Lello/@41.14,-8.61,17z/data=!3d41.1468617!4d-8.6148257'
+    const f = router({
+      'share.google': () => new Response(null, { status: 302, headers: { location: `https://consent.google.com/m?continue=${encodeURIComponent(target)}&gl=PT` } }),
+    })
+    expect(parseGoogleLink((await expandGoogleLink('https://share.google/xyz', f))!)).toEqual({ name: 'Livraria Lello', lat: 41.1468617, lng: -8.6148257 })
+    // A page instead of a redirect (or a non-Google destination) gives nothing rather than a guess.
+    expect(await expandGoogleLink('https://share.google/xyz', router({ 'share.google': () => new Response('<html>', { status: 200 }) }))).toBeNull()
   })
 })
 
