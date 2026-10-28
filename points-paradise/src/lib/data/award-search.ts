@@ -8,6 +8,7 @@ import { DISCOVERY_DESTINATIONS, dreamAirports, pickCheapest } from '../jobs/dis
 import { cachedSearch, itemToDealColumns, searchDiagnostics, type CachedSearchResult } from '../providers/seats-aero'
 import { loadAccount } from './account'
 import { upsertDeal } from './deals'
+import { evaluateMany } from './evaluation'
 import { dayStart, logJob, requestsSince } from './usage'
 
 const iata = z.string().regex(/^[A-Z]{3}$/, 'Use a 3-letter airport code')
@@ -42,6 +43,14 @@ export interface AwardSearchResultRow {
   airline: string
   programId: string
   direct: boolean
+  /** Chase points after the card's transfer ratio. */
+  chasePoints: number | null
+  /** Comparable cash price when one is known (e.g. from an earlier lookup). */
+  cashUsd: number | null
+  /** Practical cents per Chase point when the value can be calculated. */
+  cpp: number | null
+  /** Whether a cash lookup was already tried recently without a match. */
+  cashLookupTried: boolean
 }
 
 export type AwardSearchOutcome =
@@ -172,9 +181,24 @@ export async function runAwardSearch(db: AppDb, userId: string, apiKey: string, 
       airline: cols.providerName,
       programId: cols.programId ?? '',
       direct: cols.flight?.stops === 0,
+      chasePoints: null,
+      cashUsd: null,
+      cpp: null,
+      cashLookupTried: false,
     })
   }
   results.sort((a, b) => a.points - b.points || a.date.localeCompare(b.date) || a.city.localeCompare(b.city))
+  const shown = results.slice(0, RESULT_LIMIT)
+  // Value what is shown: Chase points after the card's ratio, and ¢/pt where a cash price is already known.
+  const values = await evaluateMany(db, userId, shown.map((r) => r.dealId), now)
+  for (const r of shown) {
+    const e = values.get(r.dealId)
+    if (!e) continue
+    r.chasePoints = e.valuation.chasePoints
+    r.cashUsd = e.deal.comparableCashUsd
+    r.cpp = e.valuation.calculable ? (e.valuation.practicalCpp ?? e.valuation.headlineCpp) : null
+    r.cashLookupTried = e.deal.comparableCashUsd == null && e.deal.comparableCashObservedAt != null
+  }
   await db.insert(searchHistory).values({
     userId,
     context: anywhere ? 'award_search_anywhere' : 'award_search',
@@ -183,7 +207,7 @@ export async function runAwardSearch(db: AppDb, userId: string, apiKey: string, 
   return {
     ok: true,
     anywhere,
-    results: results.slice(0, RESULT_LIMIT),
+    results: shown,
     total: results.length,
     created,
     requests: responses.length,

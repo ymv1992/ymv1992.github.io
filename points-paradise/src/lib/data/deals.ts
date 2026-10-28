@@ -64,6 +64,18 @@ export async function upsertDeal(
 ): Promise<UpsertResult> {
   const verifiedAt = opts.verifiedAt ?? opts.now
   const [existing] = await db.select().from(deals).where(eq(deals.dedupeKey, columns.dedupeKey))
+  // A provider refresh that carries no cash price (e.g. seats.aero) keeps the comparable cash
+  // price, and the record of a lookup attempt, found earlier for the same deal.
+  if (existing && columns.comparableCashUsd == null && (existing.comparableCashUsd != null || existing.comparableCashObservedAt != null)) {
+    columns = {
+      ...columns,
+      comparableCashUsd: existing.comparableCashUsd,
+      comparableCashSource: existing.comparableCashSource,
+      comparableCashObservedAt: existing.comparableCashObservedAt,
+      cashProduct: existing.cashProduct ?? columns.cashProduct,
+      missingInfo: existing.comparableCashUsd != null ? columns.missingInfo.filter((m) => m !== 'Comparable cash price') : columns.missingInfo,
+    }
+  }
   const obs = observationFromColumns(columns, opts.now)
   if (!existing) {
     const [row] = await db

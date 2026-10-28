@@ -29,6 +29,13 @@
       "when": 1793054233279,
       "tag": "0003_hotel_discovery",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793149737270,
+      "tag": "0004_serpapi_free_quota",
+      "breakpoints": true
     }
   ]
 }

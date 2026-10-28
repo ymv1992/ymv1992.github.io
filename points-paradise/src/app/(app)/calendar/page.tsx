@@ -9,6 +9,8 @@ import { integrationStatus } from '@/lib/server/config'
 import { getEvaluationWithArchive } from '@/lib/server/loaders'
 import { AwardCalendar, type CalendarCell } from '@/components/calendar/award-calendar'
 import { AwardSearchForm } from '@/components/calendar/award-search-form'
+import { HotelSearchForm } from '@/components/calendar/hotel-search-form'
+import { SearchPanel } from '@/components/calendar/search-panel'
 import { DISCOVERY_DESTINATIONS } from '@/lib/jobs/discovery'
 import { PriceHistoryChart } from '@/components/charts/price-history-chart'
 import { Badge, Card, PageHeader, SectionTitle } from '@/components/ui'
@@ -108,10 +110,16 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       <Card id="search" className="scroll-mt-20 p-5">
         <SectionTitle>Search award space</SectionTitle>
         {integrationStatus().seatsAero ? (
-          <AwardSearchForm
-            defaults={{ origin: data.account.profile.homeAirports[0] ?? 'LAX', destination: '', cabin: firstFlight?.flight?.cabin ?? 'business', startDate: today, endDate: in60 }}
-            homeAirports={data.account.profile.homeAirports}
-            destinationCount={DISCOVERY_DESTINATIONS.reduce((n, g) => n + g.airports.length, 0)}
+          <SearchPanel
+            flights={
+              <AwardSearchForm
+                defaults={{ origin: data.account.profile.homeAirports[0] ?? 'LAX', destination: '', cabin: firstFlight?.flight?.cabin ?? 'business', startDate: today, endDate: in60 }}
+                homeAirports={data.account.profile.homeAirports}
+                destinationCount={DISCOVERY_DESTINATIONS.reduce((n, g) => n + g.airports.length, 0)}
+                canPrice={integrationStatus().serpApi}
+              />
+            }
+            hotels={<HotelSearchForm defaults={{ startDate: today, endDate: in60, nights: Math.min(5, Math.max(1, data.account.profile.tripNightsMin ?? 3)) }} />}
           />
         ) : (
           <p className="text-sm text-muted">
