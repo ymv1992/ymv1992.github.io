@@ -16,6 +16,8 @@ import { PriceHistoryChart } from '@/components/charts/price-history-chart'
 import { Badge, Card, PageHeader, SectionTitle } from '@/components/ui'
 
 export const metadata: Metadata = { title: 'Award Calendar' }
+// Searches and cash lookups run as server actions on this page and can take a while.
+export const maxDuration = 60
 
 function addMonths(ym: string, n: number): string {
   const d = new Date(`${ym}-01T00:00:00Z`)

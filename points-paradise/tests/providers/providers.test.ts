@@ -127,9 +127,32 @@ describe('SerpApi adapters', () => {
     expect(q?.seatType).toBe('lie_flat')
     expect(q?.cashProduct.cabin).toBe('business')
   })
-  it('ignores mixed-cabin fares', async () => {
+  it('prefers fares entirely in the cabin over cheaper mixed-cabin ones', async () => {
     const q = await searchFlightPrice('k', { from: 'LAX', to: 'HND', date: '2026-12-01', cabin: 'business' }, fakeFetch(flights))
     expect(q?.priceUsd).toBe(3900)
+    expect(q?.mixedCabin).toBe(false)
+  })
+  it('counts a connection whose long flight is in the cabin when nothing else matches', async () => {
+    const connecting = {
+      best_flights: [
+        // Short hop in first is a higher cabin, so it could overstate the price: skipped.
+        { price: 2600, flights: [{ travel_class: 'First', duration: 60 }, { travel_class: 'Business', duration: 660 }] },
+        // Long flight in economy: not a business fare.
+        { price: 1200, flights: [{ travel_class: 'Business', duration: 60 }, { travel_class: 'Economy', duration: 660 }] },
+        { price: 3100, flights: [{ travel_class: 'Economy', duration: 65 }, { travel_class: 'Business', duration: 670 }] },
+      ],
+      other_flights: [{ price: 2900, flights: [{ travel_class: 'Economy' }, { travel_class: 'Business' }] }],
+    }
+    const q = await searchFlightPrice('k', { from: 'SAN', to: 'NRT', date: '2027-01-19', cabin: 'business', maxStops: 1 }, fakeFetch(connecting))
+    expect(q?.priceUsd).toBe(3100)
+    expect(q?.mixedCabin).toBe(true)
+    expect(q?.cashProduct.mixedCabin).toBe(true)
+  })
+  it('treats "no results" from SerpApi as no fare rather than a failure', async () => {
+    const empty = { error: "Google Flights hasn't returned any results for this query." }
+    expect(await searchFlightPrice('k', { from: 'PSP', to: 'NRT', date: '2027-01-19', cabin: 'business' }, fakeFetch(empty))).toBeNull()
+    expect(await searchHotelRate('k', { property: 'Example', checkIn: '2027-01-01', checkOut: '2027-01-03', adults: 2 }, fakeFetch(empty))).toBeNull()
+    await expect(searchFlightPrice('k', { from: 'SAN', to: 'NRT', date: '2027-01-19', cabin: 'business' }, fakeFetch({ error: 'Invalid API key.' }))).rejects.toThrow(/Invalid API key/)
   })
   it('matches the named hotel and records a standard-room comparison', async () => {
     const body = { properties: [{ name: 'Other Hotel', total_rate: { extracted_lowest: 300 } }, { name: 'Example Resort & Spa', total_rate: { extracted_lowest: 4800 } }] }

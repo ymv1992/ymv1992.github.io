@@ -10,6 +10,9 @@ import type { CashProduct } from '../domain/types'
 const BASE = 'https://serpapi.com/search.json'
 const TRAVEL_CLASS: Record<Cabin, string> = { economy: '1', premium_economy: '2', business: '3', first: '4' }
 const CLASS_LABEL: Record<Cabin, string> = { economy: 'economy', premium_economy: 'premium economy', business: 'business', first: 'first' }
+const CLASS_RANK: Record<string, number> = { economy: 0, 'premium economy': 1, business: 2, first: 3 }
+/** SerpApi reports a search that found nothing as an error; it is a normal "no fare" answer. */
+const NO_RESULTS = /(hasn't|has not) returned any results/i
 
 const segmentSchema = z
   .object({
@@ -39,9 +42,13 @@ const flightsResponseSchema = z
   })
   .passthrough()
 
+type Segment = z.infer<typeof segmentSchema>
+
 export interface FlightQuote {
   priceUsd: number
   stops: number
+  /** A shorter flight in the trip is in a lower cabin than the one searched. */
+  mixedCabin: boolean
   durationMinutes: number | null
   airlines: string
   flightNumbers: string[]
@@ -58,9 +65,19 @@ function seatFromExtensions(ext: string[]): SeatType {
   return 'unknown'
 }
 
+/** The flight with the longest flying time, or null when Google left out durations. */
+function longestSegment(flights: Segment[]): Segment | null {
+  if (!flights.length || flights.some((f) => f.duration == null)) return null
+  return flights.reduce((a, b) => (b.duration! > a.duration! ? b : a))
+}
+
 /**
- * Cheapest one-way fare in the requested cabin where every segment is in that
- * cabin. Prefers itineraries with no more stops than the award when given.
+ * Cheapest one-way fare in the requested cabin. Fares with every segment in
+ * that cabin come first. Otherwise a connecting fare counts when its longest
+ * flight is in the cabin and the shorter ones are in the same or a lower
+ * cabin: Google sells many connections that way, and a lower cabin on the
+ * short hop can only make the fare cheaper, so the value is never overstated.
+ * Prefers itineraries with no more stops than the award when given.
  */
 export async function searchFlightPrice(
   apiKey: string,
@@ -83,24 +100,36 @@ export async function searchFlightPrice(
   const res = await fetchImpl(`${BASE}?${qs}`, { signal: AbortSignal.timeout(45_000) })
   if (!res.ok) throw new Error(`SerpApi responded ${res.status}`)
   const body = flightsResponseSchema.parse(await res.json())
-  if (body.error) throw new Error(`SerpApi: ${body.error}`)
+  if (body.error) {
+    if (NO_RESULTS.test(body.error)) return null
+    throw new Error(`SerpApi: ${body.error}`)
+  }
   const all = [...(body.best_flights ?? []), ...(body.other_flights ?? [])].filter((i) => i.price != null && i.price > 0)
-  const sameCabin = all.filter((i) => i.flights.every((f) => (f.travel_class ?? '').toLowerCase() === CLASS_LABEL[p.cabin]))
-  const candidates = sameCabin.filter((i) => p.maxStops == null || i.flights.length - 1 <= p.maxStops)
-  const pool = candidates.length ? candidates : sameCabin
-  const best = pool.sort((a, b) => a.price! - b.price!)[0]
+  const label = CLASS_LABEL[p.cabin]
+  const classOf = (f: Segment) => (f.travel_class ?? '').toLowerCase()
+  const sameCabin = all.filter((i) => i.flights.every((f) => classOf(f) === label))
+  const mainInCabin = all.filter((i) => {
+    if (sameCabin.includes(i)) return false
+    const main = longestSegment(i.flights)
+    return main != null && classOf(main) === label && i.flights.every((f) => (CLASS_RANK[classOf(f)] ?? Infinity) <= CLASS_RANK[label]!)
+  })
+  const withinStops = (list: typeof all) => list.filter((i) => p.maxStops == null || i.flights.length - 1 <= p.maxStops)
+  const pool = [withinStops(sameCabin), sameCabin, withinStops(mainInCabin), mainInCabin].find((l) => l.length) ?? []
+  const best = [...pool].sort((a, b) => a.price! - b.price!)[0]
   if (!best) return null
+  const mixedCabin = !sameCabin.includes(best)
   const ext = best.flights.flatMap((f) => f.extensions ?? [])
   const seat = seatFromExtensions(ext)
   return {
     priceUsd: best.price!,
     stops: best.flights.length - 1,
+    mixedCabin,
     durationMinutes: best.total_duration ?? null,
     airlines: [...new Set(best.flights.map((f) => f.airline).filter(Boolean))].join(', '),
     flightNumbers: best.flights.map((f) => f.flight_number).filter((x): x is string => !!x),
     aircraft: best.flights.map((f) => f.airplane).filter(Boolean).join(' / ') || null,
     seatType: seat,
-    cashProduct: { cabin: p.cabin, seatType: seat === 'unknown' ? null : seat, origin: p.from, destination: p.to, date: p.date, stops: best.flights.length - 1, refundable: false },
+    cashProduct: { cabin: p.cabin, seatType: seat === 'unknown' ? null : seat, origin: p.from, destination: p.to, date: p.date, stops: best.flights.length - 1, refundable: false, mixedCabin },
   }
 }
 
@@ -148,7 +177,10 @@ export async function searchHotelRate(
   const res = await fetchImpl(`${BASE}?${qs}`, { signal: AbortSignal.timeout(45_000) })
   if (!res.ok) throw new Error(`SerpApi responded ${res.status}`)
   const body = hotelsResponseSchema.parse(await res.json())
-  if (body.error) throw new Error(`SerpApi: ${body.error}`)
+  if (body.error) {
+    if (NO_RESULTS.test(body.error)) return null
+    throw new Error(`SerpApi: ${body.error}`)
+  }
   const want = norm(p.property)
   const match = (body.properties ?? []).find((x) => {
     const n = norm(x.name)

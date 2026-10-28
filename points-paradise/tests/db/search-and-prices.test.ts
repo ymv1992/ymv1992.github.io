@@ -73,12 +73,20 @@ describe('lookupCashPrice', () => {
     await runAwardSearch(db, userId, 'k', { ...flightInput, destination: 'HND' }, { now: NOW, fetch: json({ data: [{ ...seatsBody.data[0], ID: 's2', Route: { OriginAirport: 'LAX', DestinationAirport: 'HND' } }] }) })
     const [row] = await db.select().from(deals).where(eq(deals.sourceRef, 's2'))
     const r = await lookupCashPrice(db, (await getDeal(db, row!.id))!, { apiKey: 'k', now: NOW, fetch: json({ best_flights: [] }), monthlyCapUsd: 5, jobType: 'cash_lookup' })
-    expect(r.status).toBe('not_found')
+    expect(r).toEqual({ status: 'not_found', reason: 'Google Flights had no business fare from LAX to HND on Dec 5, 2026.' })
     const [after] = await db.select().from(deals).where(eq(deals.id, row!.id))
     expect(after?.comparableCashUsd).toBeNull()
     expect(after?.comparableCashObservedAt?.toISOString()).toBe(NOW.toISOString())
     const again = await runAwardSearch(db, userId, 'k', { ...flightInput, destination: 'HND' }, { now: NOW, fetch: json({ data: [{ ...seatsBody.data[0], ID: 's2', Route: { OriginAirport: 'LAX', DestinationAirport: 'HND' } }] }) })
     expect(again.ok && again.results[0]?.cashLookupTried).toBe(true)
+  })
+
+  it('explains a failed lookup in plain words', async () => {
+    const [row] = await db.select().from(deals).where(eq(deals.sourceRef, 's2'))
+    const r = await lookupCashPrice(db, (await getDeal(db, row!.id))!, { apiKey: 'bad', now: NOW, fetch: json({ error: 'Invalid API key.' }, 401), monthlyCapUsd: 5, jobType: 'cash_lookup' })
+    expect(r).toEqual({ status: 'failed', reason: 'SerpApi did not accept the key. Check SERPAPI_API_KEY in Vercel.' })
+    const [job] = await db.select().from(searchJobs).where(eq(searchJobs.status, 'failed'))
+    expect(job?.error).toMatch(/401/)
   })
 
   it('stops at the monthly allowance', async () => {

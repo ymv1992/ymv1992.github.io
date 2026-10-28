@@ -24,6 +24,8 @@ import { integrationStatus } from '@/lib/server/config'
 import { PriceButton } from '@/components/deal/price-button'
 
 export const metadata: Metadata = { title: 'Deal analysis' }
+// The cash-price lookup runs as a server action on this page and can take a while.
+export const maxDuration = 60
 
 function Row({ label, value, warn }: { label: string; value: React.ReactNode; warn?: boolean }) {
   return (

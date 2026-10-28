@@ -22,7 +22,13 @@ export function PriceButton({ dealId, cpp, cashUsd, tried, canPrice }: { dealId:
         // Rows are links; keep the click on the button.
         e.preventDefault()
         e.stopPropagation()
-        start(async () => setResult(await priceDealAction(dealId)))
+        start(async () => {
+          try {
+            setResult(await priceDealAction(dealId))
+          } catch {
+            setResult({ ok: false, message: 'Could not reach the site. Check your connection and try again.' })
+          }
+        })
       }}
       className="rounded-full border border-line bg-surface px-2.5 py-1 text-xs text-primary hover:bg-surface-2 disabled:opacity-60"
       title={tried ? 'Checked recently without a match; this uses another free lookup' : 'Uses one of your free monthly cash-price lookups'}
