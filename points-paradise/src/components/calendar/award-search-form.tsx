@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useActionState } from 'react'
 import { searchAwardsAction, type SearchState } from '@/app/actions/search-actions'
 import { CABINS, CABIN_LABELS } from '@/lib/domain/constants'
+import { PriceButton } from '../deal/price-button'
 import { Button } from '../ui'
 
 function shortDate(iso: string): string {
@@ -22,6 +23,7 @@ export function AwardSearchForm({
   defaults,
   homeAirports,
   destinationCount,
+  canPrice,
 }: {
   defaults: {
     origin: string
@@ -32,6 +34,8 @@ export function AwardSearchForm({
   }
   homeAirports: string[]
   destinationCount: number
+  /** A SerpApi key is configured, so cash prices can be looked up. */
+  canPrice: boolean
 }) {
   const [state, action, pending] = useActionState<SearchState, FormData>(searchAwardsAction, { error: null })
   const v = state.values ?? { ...defaults, includeHomeAirports: true }
@@ -98,23 +102,24 @@ export function AwardSearchForm({
       {state.results && state.results.length > 0 && (
         <ul className="mt-4 divide-y divide-line rounded-xl border border-line" aria-label="Search results">
           {state.results.map((r) => (
-            <li key={r.dealId}>
-              <Link href={`/deals/${r.dealId}`} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 py-2.5 hover:bg-surface-2">
-                <span>
-                  <span className="font-semibold">
-                    {r.city}
-                    {r.country ? `, ${r.country}` : ''}
-                  </span>{' '}
-                  <span className="text-muted">
-                    {r.origin} → {r.airport} · {shortDate(r.date)}
-                    {r.direct ? ' · nonstop' : ''}
-                  </span>
+            <li key={r.dealId} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3 py-2.5">
+              <Link href={`/deals/${r.dealId}`} className="hover:underline">
+                <span className="font-semibold">
+                  {r.city}
+                  {r.country ? `, ${r.country}` : ''}
+                </span>{' '}
+                <span className="text-muted">
+                  {r.origin} → {r.airport} · {shortDate(r.date)}
+                  {r.direct ? ' · nonstop' : ''}
                 </span>
+              </Link>
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="tabular text-sm">
                   <span className="font-semibold">{r.points.toLocaleString('en-US')} miles</span>
                   {r.taxesUsd != null ? ` + $${Math.round(r.taxesUsd)}` : ''} <span className="text-muted">· {r.airline}</span>
                 </span>
-              </Link>
+                <PriceButton dealId={r.dealId} cpp={r.cpp} cashUsd={r.cashUsd} tried={r.cashLookupTried} canPrice={canPrice} />
+              </span>
             </li>
           ))}
         </ul>

@@ -221,9 +221,19 @@ trip in your profile, kept between 1 and 5 nights.
   came back at **Settings → Usage**.
 
 Discovered flights don't have a cash price at first. Discover lists them by
-fewest points until a comparable cash price is added: you add it yourself,
-or SerpApi adds a few a day on its free tier. After that they appear in
-Top 100 with a cents-per-point value. seats.aero covers only some Chase
+fewest points until a comparable cash price is added. There are three ways
+to add one:
+
+- Tap **Get cash price** on a flight in the Award Calendar results or on its
+  deal page. This uses one SerpApi search.
+- Let SerpApi add up to five a run on its own. It prices saved deals first,
+  then first and business class, and waits 7 days before retrying a flight
+  it couldn't match.
+- Type in the cash price yourself.
+
+SerpApi's free plan has 250 searches a month, and the app stops at 200.
+Once a flight has a cash price, it shows a cents-per-point value and can
+appear in Top 100. Later seats.aero refreshes don't remove the cash price. seats.aero covers only some Chase
 partners (United, Air Canada Aeroplan, Air France/KLM Flying Blue and Virgin
 Atlantic in this app), and hotel awards come from rooms.aero (see Hotels above).
 
@@ -245,7 +255,7 @@ restrictions are summarized at **Settings → Data sources** and in
 | Provider | How to enable | What you get |
 |---|---|---|
 | **seats.aero** | Subscribe to Pro ($9.99/month or $99.99/year in the US, as reported in October 2026) and create an API key. Set `SEATS_AERO_API_KEY`. | Automatic discovery for Discover and Top 100, cached award availability on your route watches, and award search on the Award Calendar. API calls are included in Pro (1,000 per day). Personal, non-commercial use only. |
-| **SerpApi** | Create an account and set `SERPAPI_API_KEY`. | Comparable cash fares (Google Flights) and hotel rates (Google Hotels), used to value deals that have no cash price yet. Uses the free monthly allowance first. |
+| **SerpApi** | Create an account and set `SERPAPI_API_KEY`. | Comparable cash fares (Google Flights) and hotel rates (Google Hotels), used to value deals that have no cash price yet. Free plan: 250 searches a month; the app uses at most 200. |
 | **Resend** | Verify a sending domain or address. Set `RESEND_API_KEY` and `EMAIL_FROM`, then turn on email in Settings. | Instant alerts and the daily digest by email. |
 | **Anthropic** | Create an API key and set `ANTHROPIC_API_KEY`. | AI-written deal explanations, destination ideas and trip narratives. The AI receives computed facts only and never generates prices or availability. |
 | **Unsplash** | Register an app and set `UNSPLASH_ACCESS_KEY`. | Destination photos with credit to the photographer. Without a key, the app draws its own illustrations. |
@@ -342,7 +352,13 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
   destinations from an airport, optionally with your other home airports,
   for chosen dates and cabin. You get the cheapest date per city and month,
   listed cheapest first. That's about 10 seats.aero lookups per search, so
-  no extra cost.
+  no extra cost. Each result shows its Chase points and a **Get cash price**
+  button that adds its value (¢/pt).
+- **Hotel search.** The Award Calendar's **Hotels** tab searches one place
+  (such as "Maui, Hawaii") through rooms.aero. You choose check-in dates,
+  1–5 nights and the programs (Hyatt, Marriott, IHG, Wyndham). Each search
+  is one lookup. Results show Chase points, the hotel's cash rate and the
+  value, best value first.
 - **Award Calendar.** Heatmap, price-history chart, seasonal table and
   predictions marked with their evidence tier. Predictions are withheld when
   there is too little data.

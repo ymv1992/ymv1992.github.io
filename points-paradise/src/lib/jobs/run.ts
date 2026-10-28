@@ -2,7 +2,6 @@ import { and, eq, gt, isNull, lte } from 'drizzle-orm'
 import type { AppDb } from '../db/client'
 import { announcements, appState, dataSources, deals, mediaCache, transferPromotions, users, watchlists } from '../db/schema'
 import { REMINDER_OFFSETS, type ReminderOffsetId } from '../domain/constants'
-import { canSpend, withinQuota } from '../engine/budget'
 import { dueReminders } from '../engine/deadlines'
 import { planBatch, priorityScore, type QueueCandidate } from '../engine/priority'
 import { DEFAULT_ALERT_PREFS } from '../data/account'
@@ -19,9 +18,9 @@ import {
   type EmailSender,
 } from '../data/notifications'
 import { listSaved, refreshSavedSnapshot } from '../data/saved'
-import { dayStart, logJob, monthSpendUsd, monthStart, requestsSince } from '../data/usage'
+import { lookupCashPrice, RECHECK_DAYS } from '../data/cash-prices'
+import { dayStart, logJob, requestsSince } from '../data/usage'
 import { cachedSearch, itemToDealColumns, searchDiagnostics } from '../providers/seats-aero'
-import { searchFlightPrice, searchHotelRate } from '../providers/serpapi'
 import { searchDestinationPhoto } from '../providers/unsplash'
 import { fetchFeed, matchKeywords } from '../providers/rss'
 import { DISCOVERY_METHOD, runDiscovery, type DiscoveryLimits } from './discovery'
@@ -473,78 +472,42 @@ async function runWatchChecks(db: AppDb, deps: JobDeps, userId: string, mode: Jo
   }
 }
 
+const CABIN_PRIORITY: Record<string, number> = { first: 0, business: 1, premium_economy: 2, economy: 3 }
+
+/**
+ * Adds comparable cash prices to a few discovered deals per run: saved deals
+ * first, then first and business class (where points value matters most),
+ * then fewest points. Deals looked up recently are skipped, priced or not.
+ */
 async function enrichCashPrices(db: AppDb, deps: JobDeps, userId: string, summary: JobSummary) {
   if (!deps.keys.serpApi) return
   const now = deps.now
-  const flightsSrc = await source(db, 'serpapi_flights')
-  const hotelsSrc = await source(db, 'serpapi_hotels')
-  const used = (await requestsSince(db, 'serpapi_flights', monthStart(now))) + (await requestsSince(db, 'serpapi_hotels', monthStart(now)))
-  const quota = flightsSrc?.monthlyQuota ?? 100
   const data = await loadEvaluationData(db, userId, { now })
-  const capUsd = data.account.settings.monthlyApiBudgetUsd
-  const spent = (await monthSpendUsd(db, now)) - (await monthSpendUsd(db, now, 'anthropic'))
+  const today = now.toISOString().slice(0, 10)
+  const recent = now.getTime() - RECHECK_DAYS * DAY
   const todo = data.items
-    .filter((e) => e.deal.sourceKind === 'api' && e.deal.comparableCashUsd == null && e.deal.travelStart && e.deal.travelStart > now.toISOString().slice(0, 10))
-    .sort((a, b) => Number(data.savedIds.has(b.deal.id)) - Number(data.savedIds.has(a.deal.id)) || (a.deal.programPoints ?? 0) - (b.deal.programPoints ?? 0))
+    .filter(
+      (e) =>
+        e.deal.sourceKind === 'api' &&
+        e.deal.comparableCashUsd == null &&
+        e.deal.travelStart != null &&
+        e.deal.travelStart > today &&
+        (e.deal.comparableCashObservedAt == null || e.deal.comparableCashObservedAt.getTime() < recent),
+    )
+    .sort(
+      (a, b) =>
+        Number(data.savedIds.has(b.deal.id)) - Number(data.savedIds.has(a.deal.id)) ||
+        (CABIN_PRIORITY[a.deal.flight?.cabin ?? ''] ?? 4) - (CABIN_PRIORITY[b.deal.flight?.cabin ?? ''] ?? 4) ||
+        (a.deal.programPoints ?? 0) - (b.deal.programPoints ?? 0),
+    )
     .slice(0, 5)
-  let spentNow = spent
   for (const e of todo) {
-    const isHotel = e.deal.kind === 'hotel'
-    const src = isHotel ? hotelsSrc : flightsSrc
-    const provider = isHotel ? 'serpapi_hotels' : 'serpapi_flights'
-    const cost = src?.costPerRequestUsd ?? 0
-    if (!withinQuota(used + summary.enriched, 1, quota)) {
-      summary.skipped.push('SerpApi monthly quota reached')
-      await logJob(db, { provider, jobType: 'cash_enrichment', status: 'skipped_quota', startedAt: now, error: 'Monthly quota reached' })
+    const r = await lookupCashPrice(db, e.deal, { apiKey: deps.keys.serpApi, now, fetch: deps.fetch, monthlyCapUsd: data.account.settings.monthlyApiBudgetUsd, jobType: 'cash_enrichment' })
+    if (r.status === 'priced') summary.enriched++
+    else if (r.status === 'failed') summary.errors.push(r.reason)
+    else if (r.status === 'skipped') {
+      summary.skipped.push(r.reason)
       break
-    }
-    const decision = canSpend(spentNow, cost, capUsd)
-    if (!decision.allowed) {
-      summary.skipped.push(decision.reason)
-      await logJob(db, { provider, jobType: 'cash_enrichment', status: 'skipped_budget', startedAt: now, error: decision.reason })
-      break
-    }
-    const startedAt = new Date()
-    try {
-      if (e.deal.flight && e.deal.originAirport && e.deal.destination.airport) {
-        const q = await searchFlightPrice(deps.keys.serpApi, { from: e.deal.originAirport, to: e.deal.destination.airport, date: e.deal.travelStart!, cabin: e.deal.flight.cabin, maxStops: e.deal.flight.stops }, deps.fetch)
-        if (q) {
-          await db
-            .update(deals)
-            .set({
-              comparableCashUsd: q.priceUsd,
-              comparableCashSource: 'live_api',
-              comparableCashObservedAt: now,
-              cashProduct: q.cashProduct,
-              missingInfo: e.deal.missingInfo.filter((m) => m !== 'Comparable cash price'),
-              updatedAt: now,
-            })
-            .where(eq(deals.id, e.deal.id))
-        }
-        await logJob(db, { provider, jobType: 'cash_enrichment', params: { dealId: e.deal.id }, status: 'succeeded', startedAt, requestCount: 1, estimatedCostUsd: cost, resultsCount: q ? 1 : 0 })
-      } else if (isHotel && e.deal.hotel && e.deal.travelEnd) {
-        const r = await searchHotelRate(deps.keys.serpApi, { property: e.deal.hotel.property, checkIn: e.deal.travelStart!, checkOut: e.deal.travelEnd, adults: e.deal.hotel.guests ?? 2 }, deps.fetch)
-        if (r) {
-          await db
-            .update(deals)
-            .set({
-              comparableCashUsd: r.totalUsd,
-              comparableCashSource: 'live_api',
-              comparableCashObservedAt: now,
-              cashProduct: r.cashProduct,
-              missingInfo: e.deal.missingInfo.filter((m) => m !== 'Comparable cash price'),
-              updatedAt: now,
-            })
-            .where(eq(deals.id, e.deal.id))
-        }
-        await logJob(db, { provider, jobType: 'cash_enrichment', params: { dealId: e.deal.id }, status: 'succeeded', startedAt, requestCount: 1, estimatedCostUsd: cost, resultsCount: r ? 1 : 0 })
-      } else continue
-      spentNow += cost
-      summary.enriched++
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Cash lookup failed'
-      await logJob(db, { provider, jobType: 'cash_enrichment', params: { dealId: e.deal.id }, status: 'failed', startedAt, requestCount: 1, error: message })
-      summary.errors.push(message)
     }
   }
 }
