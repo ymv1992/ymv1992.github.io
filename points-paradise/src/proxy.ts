@@ -2,9 +2,10 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { SESSION_COOKIE, verifySessionToken } from './lib/auth/session'
 
 /**
- * Optimistic route guard: everything except the login page, cron endpoints
- * and static assets requires a valid signed session cookie. Pages and actions
- * re-check the session against the database (see lib/server/session.ts).
+ * Optimistic route guard: everything except the login page, shared trip
+ * links (/share/<token>), cron endpoints and static assets requires a valid
+ * signed session cookie. Pages and actions re-check the session against the
+ * database (see lib/server/session.ts).
  */
 export async function proxy(request: NextRequest) {
   const session = await verifySessionToken(request.cookies.get(SESSION_COOKIE)?.value)
@@ -19,5 +20,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!login|api/cron|_next/static|_next/image|favicon.ico|icon.svg|icon-192.png|icon-512.png|manifest.webmanifest|sw.js|offline.html|robots.txt).*)'],
+  matcher: ['/((?!login|share/|api/cron|_next/static|_next/image|favicon.ico|icon.svg|icon-192.png|icon-512.png|manifest.webmanifest|sw.js|offline.html|robots.txt).*)'],
 }

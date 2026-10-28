@@ -362,6 +362,31 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
 - **Award Calendar.** Heatmap, price-history chart, seasonal table and
   predictions marked with their evidence tier. Predictions are withheld when
   there is too little data.
+- **My Trips (itinerary builder).** Under **Plan → My Trips**:
+  - **Trips.** A trip has dates, or is a "someday" trip with just a number
+    of days.
+  - **Days and ideas.** Each day lists its plans: activities, food, flights,
+    stays, getting around and notes. A time, place (with a Google Maps
+    link), link, cost, Chase points and notes are all optional. An **Ideas**
+    list holds things not yet on a day.
+  - **Rearranging.** Grab the dotted handle to drag an item within a day,
+    to another day or to Ideas. On a phone, press and hold. Editing an item
+    and picking another day also moves it.
+  - **Checking off.** Tick items off as you go. Totals show the trip's Chase
+    points (against your balance) and cash.
+  - **Adding deals.** Add a saved deal, or an award flight already found for
+    the trip. It lands on its travel day when that's during the trip.
+  - **Watch for deals.** Needs the airport you'd fly into. It creates one
+    seats.aero route watch from your home airports, covering 3 days either
+    side of the start date (or the coming year for a someday trip). It's
+    removed with the trip.
+  - **Share with a partner.** Turns on a read-only link (`/share/<token>`)
+    that shows only that trip and isn't indexed by search engines. Stopping
+    sharing turns the link off.
+  - **Download PDF.** Downloads the itinerary with tick boxes, from your
+    page or the share link. The PDF uses the standard built-in fonts, so
+    letters outside Western European alphabets print as "?" and emoji are
+    left out.
 - **Positioning optimizer.** Full cost breakdown and separate-ticket
   warnings.
 - **Trip Architect.** Turns a plain-English request into plans that fit

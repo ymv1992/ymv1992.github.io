@@ -377,6 +377,64 @@ export const watchlists = pgTable(
   (t) => [index('watchlists_user_idx').on(t.userId)],
 )
 
+// ─── Trips (itinerary builder) ───────────────────────────────────────────────
+
+/** Itinerary item types; labels live in lib/data/trips.ts. */
+export type TripItemKind = 'flight' | 'hotel' | 'activity' | 'food' | 'transport' | 'note'
+
+export const trips = pgTable(
+  'trips',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    destination: text('destination').notNull().default(''),
+    /** Airport used for "watch for deals" (3-letter code). */
+    destAirport: text('dest_airport'),
+    startDate: date('start_date', { mode: 'string' }),
+    endDate: date('end_date', { mode: 'string' }),
+    /** Number of days for a trip without dates. */
+    dayCount: integer('day_count').notNull().default(3),
+    notes: text('notes'),
+    /** Random token for the read-only share link; null when sharing is off. */
+    shareToken: text('share_token').unique(),
+    watchId: uuid('watch_id').references(() => watchlists.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('trips_user_idx').on(t.userId)],
+)
+
+export const tripItems = pgTable(
+  'trip_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tripId: uuid('trip_id')
+      .notNull()
+      .references(() => trips.id, { onDelete: 'cascade' }),
+    /** 1-based day of the trip; null means the unscheduled ideas list. */
+    day: integer('day'),
+    position: integer('position').notNull().default(0),
+    kind: text('kind').$type<TripItemKind>().notNull(),
+    title: text('title').notNull(),
+    /** Local time as HH:MM. */
+    time: text('time'),
+    place: text('place'),
+    url: text('url'),
+    costUsd: doublePrecision('cost_usd'),
+    /** Chase points this item needs. */
+    points: integer('points'),
+    notes: text('notes'),
+    done: boolean('done').notNull().default(false),
+    dealId: uuid('deal_id').references(() => deals.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('trip_items_trip_idx').on(t.tripId, t.day, t.position)],
+)
+
 // ─── Signals ─────────────────────────────────────────────────────────────────
 
 export const notifications = pgTable(
