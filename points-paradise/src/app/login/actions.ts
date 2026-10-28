@@ -7,6 +7,7 @@ import { getDb } from '@/lib/db/client'
 import { verifyPassword } from '@/lib/auth/password'
 import { loginAllowed, recordLoginAttempt } from '@/lib/auth/rate-limit'
 import { ensureOwnerAccount, loadAccount } from '@/lib/data/account'
+import { GUEST_SESSION_HOURS, redeemGuestPassword } from '@/lib/data/guest-passes'
 import { config } from '@/lib/server/config'
 import { endSession, startSession } from '@/lib/server/session'
 
@@ -22,6 +23,11 @@ const schema = z.object({
   next: z.string().max(500).optional(),
 })
 
+async function clientIp(): Promise<string> {
+  const h = await headers()
+  return (h.get('x-forwarded-for')?.split(',')[0] ?? h.get('x-real-ip') ?? 'unknown').trim().slice(0, 64)
+}
+
 function safeNext(next: string | undefined): string | null {
   // Only allow same-site relative paths to prevent open redirects.
   if (!next || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) return null
@@ -36,8 +42,7 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   const hash = config.ownerPasswordHash()
   if (!ownerEmail || !hash) return { error: 'Sign-in is not configured. Set OWNER_EMAIL and OWNER_PASSWORD_HASH.' }
 
-  const h = await headers()
-  const ip = (h.get('x-forwarded-for')?.split(',')[0] ?? h.get('x-real-ip') ?? 'unknown').trim().slice(0, 64)
+  const ip = await clientIp()
   const db = await getDb()
   if (!(await loginAllowed(db, ip))) return { error: 'Too many failed attempts. Try again in 15 minutes.', email }
 
@@ -52,6 +57,24 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   await startSession(userId)
   const account = await loadAccount(db, userId)
   redirect(account.settings.onboardingCompletedAt ? (safeNext(parsed.data.next) ?? '/discover') : '/onboarding')
+}
+
+export interface GuestLoginState {
+  error: string | null
+}
+
+/** Signs a friend in with a guest pass: view-only access for GUEST_SESSION_HOURS, counted against the pass's sign-ins. */
+export async function guestLogin(_prev: GuestLoginState, formData: FormData): Promise<GuestLoginState> {
+  const password = String(formData.get('guestPassword') ?? '').slice(0, 100)
+  if (password.trim().length < 6) return { error: 'Enter the guest password you were sent.' }
+  const ip = await clientIp()
+  const db = await getDb()
+  if (!(await loginAllowed(db, ip))) return { error: 'Too many failed attempts. Try again in 15 minutes.' }
+  const pass = await redeemGuestPassword(db, password)
+  await recordLoginAttempt(db, ip, pass != null)
+  if (!pass) return { error: 'That guest password is not valid, or it has no sign-ins left.' }
+  await startSession(pass.userId, { guestPassId: pass.passId, ttlSeconds: GUEST_SESSION_HOURS * 3600 })
+  redirect('/discover')
 }
 
 export async function logout(): Promise<void> {

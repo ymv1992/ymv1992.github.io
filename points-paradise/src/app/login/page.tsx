@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
+import { GuestLoginForm } from './guest-login-form'
 import { LoginForm } from './login-form'
 import { integrationStatus } from '@/lib/server/config'
 import { getSessionUserId } from '@/lib/server/session'
@@ -29,7 +30,13 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <p className="mt-2 text-sm text-muted">Sign in to your travel intelligence.</p>
           <div className="mt-8">
             {configured ? (
-              <LoginForm next={next ?? ''} />
+              <>
+                <LoginForm next={next ?? ''} />
+                <details className="mt-6 rounded-2xl border border-line bg-surface px-4 py-3">
+                  <summary className="cursor-pointer text-sm font-medium">Have a guest pass?</summary>
+                  <GuestLoginForm />
+                </details>
+              </>
             ) : (
               <div className="rounded-2xl border border-line bg-surface p-5 text-sm">
                 <p className="font-semibold">Sign-in is not configured yet</p>

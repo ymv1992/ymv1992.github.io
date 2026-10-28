@@ -6,6 +6,7 @@ import { predict, type Observation } from '@/lib/engine/history'
 import { median } from '@/lib/engine/valuation'
 import { points } from '@/lib/format'
 import { integrationStatus } from '@/lib/server/config'
+import { getViewer } from '@/lib/server/session'
 import { getEvaluationWithArchive } from '@/lib/server/loaders'
 import { AwardCalendar, type CalendarCell } from '@/components/calendar/award-calendar'
 import { AwardSearchForm } from '@/components/calendar/award-search-form'
@@ -118,7 +119,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                 defaults={{ origin: data.account.profile.homeAirports[0] ?? 'LAX', destination: '', cabin: firstFlight?.flight?.cabin ?? 'business', startDate: today, endDate: in60 }}
                 homeAirports={data.account.profile.homeAirports}
                 destinationCount={DISCOVERY_DESTINATIONS.reduce((n, g) => n + g.airports.length, 0)}
-                canPrice={integrationStatus().serpApi}
+                canPrice={integrationStatus().serpApi && !(await getViewer())?.guest}
               />
             }
             hotels={<HotelSearchForm defaults={{ startDate: today, endDate: in60, nights: Math.min(5, Math.max(1, data.account.profile.tripNightsMin ?? 3)) }} />}

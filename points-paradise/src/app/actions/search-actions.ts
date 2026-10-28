@@ -32,7 +32,7 @@ export interface SearchState {
 
 /** Owner-requested award search, within the provider's daily quota. An empty "To" searches anywhere. */
 export async function searchAwardsAction(prev: SearchState, fd: FormData): Promise<SearchState> {
-  const userId = await requireUserId()
+  const userId = await requireUserId({ guestMay: 'search' })
   const values: SearchValues = {
     origin: String(fd.get('origin') ?? '').trim().toUpperCase(),
     destination: String(fd.get('destination') ?? '').trim().toUpperCase(),
@@ -78,7 +78,7 @@ export interface HotelSearchState {
 
 /** Owner-requested hotel award search through rooms.aero (same key as seats.aero). */
 export async function searchHotelsAction(prev: HotelSearchState, fd: FormData): Promise<HotelSearchState> {
-  const userId = await requireUserId()
+  const userId = await requireUserId({ guestMay: 'search' })
   const values = {
     place: String(fd.get('place') ?? '').trim(),
     startDate: String(fd.get('startDate') ?? ''),

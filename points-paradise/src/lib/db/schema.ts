@@ -31,6 +31,26 @@ export const users = pgTable('users', {
   lastLoginAt: ts('last_login_at'),
 })
 
+/**
+ * Guest passes let the owner share a view-only preview with a friend: a
+ * generated password (stored hashed) that signs in a limited number of times
+ * and can be cancelled at any time, which also ends sessions already open.
+ */
+export const guestPasses = pgTable('guest_passes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  label: text('label').notNull(),
+  passwordHash: text('password_hash').notNull(),
+  loginsAllowed: integer('logins_allowed').notNull(),
+  loginsUsed: integer('logins_used').notNull().default(0),
+  allowSearch: boolean('allow_search').notNull().default(false),
+  createdAt: createdAt(),
+  lastUsedAt: ts('last_used_at'),
+  revokedAt: ts('revoked_at'),
+})
+
 export const authAttempts = pgTable(
   'auth_attempts',
   {
