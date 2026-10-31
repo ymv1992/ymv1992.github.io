@@ -34,6 +34,8 @@ export interface TripItemView {
   mapSpan: number | null
   photo: PlacePhoto | null
   booking: TripBooking | null
+  city: string | null
+  countryCode: string | null
 }
 
 export interface TripDayView {
@@ -42,8 +44,8 @@ export interface TripDayView {
 }
 
 export function toItemView(row: TripItemView & Record<string, unknown>): TripItemView {
-  const { id, day, position, kind, title, time, place, url, costAmount, costCurrency, points, notes, done, dealId, lat, lng, mapSpan, photo, booking } = row
-  return { id, day, position, kind, title, time, place, url, costAmount, costCurrency, points, notes, done, dealId, lat, lng, mapSpan, photo, booking: booking ?? null }
+  const { id, day, position, kind, title, time, place, url, costAmount, costCurrency, points, notes, done, dealId, lat, lng, mapSpan, photo, booking, city, countryCode } = row
+  return { id, day, position, kind, title, time, place, url, costAmount, costCurrency, points, notes, done, dealId, lat, lng, mapSpan, photo, booking: booking ?? null, city: city ?? null, countryCode: countryCode ?? null }
 }
 
 /** "Day 2 · Sat, Dec 5" (fixed to UTC so server and browser agree). */

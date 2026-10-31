@@ -2,7 +2,7 @@ import { and, eq, isNull, ne, or, isNotNull } from 'drizzle-orm'
 import type { AppDb } from '../db/client'
 import { dataSources, placeLookups, tripItems, trips, type PlacePhoto, type TripItemKind } from '../db/schema'
 import { expandGoogleLink, isGooglePlaceLink, isGoogleShortLink, parseGoogleLink } from '../places/google-maps-link'
-import { geocode } from '../providers/nominatim'
+import { geocode, reverseCity, type CityResult } from '../providers/nominatim'
 import { findPlacePhoto } from '../providers/wikimedia'
 import { dayStart, logJob, requestsSince } from './usage'
 
@@ -167,6 +167,35 @@ export async function lookupPlace(db: AppDb, input: PlaceInput, deps: PlaceDeps)
   }
 }
 
+/**
+ * The town or city at a point, cached by position (about 1 km) for 90 days.
+ * Null when OpenStreetMap is off, over its daily cap, or doesn't know.
+ */
+export async function cityAt(db: AppDb, lat: number, lng: number, deps: PlaceDeps): Promise<CityResult | null> {
+  const key = `city|${lat.toFixed(2)}|${lng.toFixed(2)}`
+  const [cached] = await db.select().from(placeLookups).where(eq(placeLookups.key, key))
+  if (cached) {
+    const v = cached.value as CityResult | null
+    const fresh = deps.now.getTime() - cached.fetchedAt.getTime() < (v ? CACHE_DAYS * 24 : MISS_CACHE_HOURS) * 3_600_000
+    if (fresh) return v
+  }
+  if (!(await enabled(db, 'nominatim', deps.now))) return null
+  const startedAt = new Date()
+  try {
+    await searchSlot(deps.minIntervalMs ?? 1100)
+    const found = await reverseCity(lat, lng, deps.fetch)
+    await logJob(db, { provider: 'nominatim', jobType: 'city_lookup', params: { lat: Number(lat.toFixed(2)), lng: Number(lng.toFixed(2)), found: !!found }, status: 'succeeded', startedAt, requestCount: 1, resultsCount: found ? 1 : 0 })
+    await db
+      .insert(placeLookups)
+      .values({ key, value: found, fetchedAt: deps.now })
+      .onConflictDoUpdate({ target: placeLookups.key, set: { value: found, fetchedAt: deps.now } })
+    return found
+  } catch (err) {
+    await logJob(db, { provider: 'nominatim', jobType: 'city_lookup', params: { lat: Number(lat.toFixed(2)), lng: Number(lng.toFixed(2)) }, status: 'failed', startedAt, requestCount: 1, error: err instanceof Error ? err.message : 'City lookup failed' })
+    return null
+  }
+}
+
 /** Looks up the map position and photo for one trip item and saves them. Never throws. */
 export async function enrichTripItem(db: AppDb, userId: string, itemId: string, deps: PlaceDeps): Promise<{ map: boolean; photo: boolean }> {
   const [row] = await db
@@ -182,6 +211,9 @@ export async function enrichTripItem(db: AppDb, userId: string, itemId: string, 
     media = null
   }
   const placeIsLink = !!row.item.place && isGooglePlaceLink(row.item.place)
+  // Which town or city it's in, for the trip's map and weather by city. Big areas (a whole island or country) have none.
+  const small = media?.lat != null && media.lng != null && (media.span ?? 0) < 0.5
+  const city = small ? await cityAt(db, media!.lat!, media!.lng!, deps).catch(() => null) : null
   await db
     .update(tripItems)
     .set({
@@ -190,6 +222,9 @@ export async function enrichTripItem(db: AppDb, userId: string, itemId: string, 
       mapSpan: media?.span ?? null,
       photo: media?.photo ?? null,
       mediaCheckedAt: deps.now,
+      city: city?.city ?? null,
+      countryCode: city?.countryCode ?? null,
+      cityCheckedAt: deps.now,
       // A Google link pasted as the place becomes the link, and its name the place.
       ...(placeIsLink ? { url: row.item.url ?? row.item.place, place: media?.name ?? null } : !row.item.place && media?.name ? { place: media.name } : {}),
     })
@@ -197,11 +232,21 @@ export async function enrichTripItem(db: AppDb, userId: string, itemId: string, 
   return { map: media?.lat != null, photo: !!media?.photo }
 }
 
-/** Items in a trip not looked up yet (for example, added before maps existed). Notes count only with a place or link. */
+/**
+ * Items in a trip not looked up yet (for example, added before maps existed),
+ * or with a map but no city yet (added before cities existed). Notes count
+ * only with a place or link.
+ */
 export async function itemsNeedingMedia(db: AppDb, userId: string, tripId: string) {
   return db
     .select({ id: tripItems.id })
     .from(tripItems)
     .innerJoin(trips, eq(trips.id, tripItems.tripId))
-    .where(and(eq(trips.id, tripId), eq(trips.userId, userId), isNull(tripItems.mediaCheckedAt), or(ne(tripItems.kind, 'note'), isNotNull(tripItems.place), isNotNull(tripItems.url))))
+    .where(
+      and(
+        eq(trips.id, tripId),
+        eq(trips.userId, userId),
+        or(and(isNull(tripItems.mediaCheckedAt), or(ne(tripItems.kind, 'note'), isNotNull(tripItems.place), isNotNull(tripItems.url))), and(isNotNull(tripItems.lat), isNull(tripItems.cityCheckedAt))),
+      ),
+    )
 }

@@ -502,10 +502,37 @@ export const tripItems = pgTable(
     mediaCheckedAt: ts('media_checked_at'),
     /** Confirmation number, flight or hotel details. */
     booking: jsonb('booking').$type<TripBooking>(),
+    /** The town or city the place is in (from OpenStreetMap), for the map and weather by city. */
+    city: text('city'),
+    countryCode: text('country_code'),
+    /** When the city was last looked up; null means not yet. */
+    cityCheckedAt: ts('city_checked_at'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [index('trip_items_trip_idx').on(t.tripId, t.day, t.position)],
+)
+
+export type PackingCategory = 'documents' | 'clothes' | 'weather' | 'activities' | 'toiletries' | 'tech' | 'other'
+
+/** A trip's packing list: suggested items (with the reason) and the owner's own. */
+export const tripPackingItems = pgTable(
+  'trip_packing_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tripId: uuid('trip_id')
+      .notNull()
+      .references(() => trips.id, { onDelete: 'cascade' }),
+    label: text('label').notNull(),
+    category: text('category').$type<PackingCategory>().notNull().default('other'),
+    /** Why it was suggested ("Rain likely in Porto on Day 3"); null for the owner's own items. */
+    reason: text('reason'),
+    packed: boolean('packed').notNull().default(false),
+    /** Suggested items the owner removed stay hidden here so they aren't suggested again. */
+    dismissed: boolean('dismissed').notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [index('trip_packing_trip_idx').on(t.tripId)],
 )
 
 /** Cached place lookups (map position and photo), so each place is looked up once. */

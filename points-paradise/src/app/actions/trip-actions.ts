@@ -11,6 +11,9 @@ import { getDeal } from '@/lib/data/deals'
 import { evaluateMany } from '@/lib/data/evaluation'
 import { enrichTripItem, itemsNeedingMedia } from '@/lib/data/place-media'
 import { lookUpTripFlight } from '@/lib/data/trip-flights'
+import { homeCountry, packingInput, planTrip, weatherForTrip } from '@/lib/data/trip-insights'
+import { addOwnPackingItem, addSuggestions, removePackingItem, setPacked } from '@/lib/data/trip-packing'
+import { suggestPacking } from '@/lib/trips/packing'
 import { ensureTripRates, refreshTripRate, setTripRate } from '@/lib/data/trip-rates'
 import {
   addDealToTrip,
@@ -20,6 +23,7 @@ import {
   createTrip,
   deleteTrip,
   deleteTripItem,
+  getTrip,
   setTripItemDone,
   setTripSharing,
   tripBookingInputSchema,
@@ -248,4 +252,44 @@ export async function lookUpTripFlightAction(tripId: string, itemId: string): Pr
   refresh(tripId)
   const s = r.schedule
   return { ok: true, message: `Found it: departs ${s.departTime}, arrives ${s.arriveTime}${s.arriveDayOffset ? ' (next day)' : ''}${s.aircraft ? `, ${s.aircraft}` : ''}.` }
+}
+
+/** Adds packing suggestions for the trip from its days, weather and plans. */
+export async function suggestPackingAction(tripId: string): Promise<{ ok: boolean; message: string }> {
+  const userId = await requireUserId()
+  if (!uuid.safeParse(tripId).success) return { ok: false, message: 'Trip not found' }
+  const db = await getDb()
+  const data = await getTrip(db, userId, tripId)
+  if (!data) return { ok: false, message: 'Trip not found' }
+  const { profile } = await loadAccount(db, userId)
+  const plan = planTrip(data.trip, data.items)
+  const weather = await weatherForTrip(db, data.trip, plan, { fetch, now: new Date() }).catch(() => null)
+  const added = await addSuggestions(db, userId, tripId, suggestPacking(packingInput(data.trip, data.items, plan, weather, homeCountry(profile.homeAirports))))
+  refresh(tripId)
+  const noWeather = !data.trip.startDate ? ' Add trip dates to get weather-based suggestions too.' : !weather?.days.length ? ' Weather wasn’t available, so nothing weather-based was added yet.' : ''
+  return { ok: true, message: `${added ? `Added ${added} suggestion${added === 1 ? '' : 's'}.` : 'Your list already has everything we’d suggest.'}${noWeather}` }
+}
+
+export async function addPackingItemAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const userId = await requireUserId()
+  const tripId = uuid.safeParse(fd.get('tripId'))
+  if (!tripId.success) return { error: 'Trip not found' }
+  const r = await addOwnPackingItem(await getDb(), userId, tripId.data, String(fd.get('label') ?? ''))
+  if (!r.ok) return { error: r.error ?? 'Could not add it' }
+  refresh(tripId.data)
+  return { error: null, ok: 'Added.' }
+}
+
+export async function setPackedAction(tripId: string, itemId: string, packed: boolean): Promise<void> {
+  const userId = await requireUserId()
+  if (!uuid.safeParse(tripId).success || !uuid.safeParse(itemId).success) return
+  await setPacked(await getDb(), userId, itemId, packed)
+  refresh(tripId)
+}
+
+export async function removePackingItemAction(tripId: string, itemId: string): Promise<void> {
+  const userId = await requireUserId()
+  if (!uuid.safeParse(tripId).success || !uuid.safeParse(itemId).success) return
+  await removePackingItem(await getDb(), userId, itemId)
+  refresh(tripId)
 }

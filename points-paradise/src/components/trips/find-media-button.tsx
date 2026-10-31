@@ -11,7 +11,7 @@ export function FindMediaButton({ tripId, count }: { tripId: string; count: numb
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2 text-sm">
       <span className="text-muted">
-        {count} place{count === 1 ? '' : 's'} in this trip {count === 1 ? "doesn't" : "don't"} have a map or photo yet.
+        {count} place{count === 1 ? '' : 's'} in this trip {count === 1 ? "doesn't" : "don't"} have a map, photo or city yet (the city is used for the map and weather).
       </span>
       <Button
         type="button"

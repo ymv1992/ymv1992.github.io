@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { headers } from 'next/headers'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -9,9 +10,11 @@ import { deals, watchlists } from '@/lib/db/schema'
 import { loadAccount } from '@/lib/data/account'
 import { evaluateMany } from '@/lib/data/evaluation'
 import { itemsNeedingMedia } from '@/lib/data/place-media'
+import { planTrip, weatherForTrip, type TripPlan } from '@/lib/data/trip-insights'
+import { listPacking } from '@/lib/data/trip-packing'
 import { tripCurrenciesInUse } from '@/lib/data/trip-rates'
 import { listSaved } from '@/lib/data/saved'
-import { dealsForTrip, getTrip, tripDayCount, tripDayDate, tripTotals, tripWatchWindow } from '@/lib/data/trips'
+import { dealsForTrip, getTrip, tripDayCount, tripDayDate, tripTotals, tripWatchWindow, type TripRow } from '@/lib/data/trips'
 import { CABINS, CABIN_LABELS } from '@/lib/domain/constants'
 import { dateLabel, dateRange, points, usd } from '@/lib/format'
 import { integrationStatus } from '@/lib/server/config'
@@ -22,6 +25,9 @@ import { ActionForm } from '@/components/action-form'
 import { Icon } from '@/components/icons'
 import { ConfirmSubmit } from '@/components/trips/confirm-submit'
 import { FindMediaButton } from '@/components/trips/find-media-button'
+import { PackingList } from '@/components/trips/packing-list'
+import { TripMap, type MapCity, type MapPin } from '@/components/trips/trip-map'
+import { TripWeatherView } from '@/components/trips/trip-weather'
 import { RatesCard } from '@/components/trips/rates-card'
 import { ShareCard } from '@/components/trips/share-card'
 import { TripBoard } from '@/components/trips/trip-board'
@@ -37,6 +43,30 @@ function boardVersion(items: { id: string; day: number | null; position: number;
   let h = 5381
   for (const i of items) for (const ch of `${i.id}${i.day}${i.position}${i.done}${i.updatedAt.getTime()}`) h = ((h << 5) + h + ch.charCodeAt(0)) | 0
   return `${items.length}-${h >>> 0}`
+}
+
+/** "Days 1–3, 6" from a list of day numbers. */
+function daysLabel(days: number[]): string {
+  if (!days.length) return 'Ideas only'
+  const runs: string[] = []
+  let start = days[0]!
+  let prev = start
+  for (const d of [...days.slice(1), Infinity]) {
+    if (d === prev + 1) {
+      prev = d
+      continue
+    }
+    runs.push(start === prev ? `${start}` : `${start}–${prev}`)
+    start = d
+    prev = d
+  }
+  return `${days.length === 1 ? 'Day' : 'Days'} ${runs.join(', ')}`
+}
+
+/** Loads the weather separately, so the rest of the trip shows without waiting for it. */
+async function WeatherSection({ trip, plan, today }: { trip: TripRow; plan: TripPlan; today: string }) {
+  const weather = await weatherForTrip(await getDb(), trip, plan, { fetch, now: new Date() }).catch(() => null)
+  return <TripWeatherView weather={weather} plan={plan} hasDates={!!trip.startDate} today={today} />
 }
 
 export default async function TripPage({ params }: { params: Promise<{ id: string }> }) {
@@ -70,6 +100,20 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
   const watchWindow = tripWatchWindow(trip, today)
   const short = totals.points > wallet.chaseBalance ? totals.points - wallet.chaseBalance : 0
   const needMedia = (await itemsNeedingMedia(db, userId, trip.id)).length
+  const packing = await listPacking(db, userId, trip.id)
+
+  // Cities: the map has one tab per city, and each day knows which city it's in (for the weather).
+  const plan = planTrip(trip, items)
+  const itemById = new Map(items.map((i) => [i.id, i]))
+  const mapCities: MapCity[] = plan.cities
+    .filter((c) => c.itemIds.length)
+    .map((c) => ({ key: c.key, city: c.city, when: daysLabel(plan.dayCities.filter((d) => d.cityKey === c.key).map((d) => d.day)) }))
+  const pins: MapPin[] = plan.cities.flatMap((c) =>
+    c.itemIds.map((id) => {
+      const i = itemById.get(id)!
+      return { id, cityKey: c.key, lat: i.lat!, lng: i.lng!, title: i.title, day: i.day, time: i.time }
+    }),
+  )
 
   return (
     <div className="space-y-6">
@@ -114,6 +158,23 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
       {needMedia > 0 && <FindMediaButton tripId={trip.id} count={needMedia} />}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <Card className="p-4">
+          <SectionTitle aside={<Icon name="map" className="size-4 text-muted" />}>Map by city</SectionTitle>
+          {mapCities.length ? (
+            <TripMap cities={mapCities} pins={pins} />
+          ) : (
+            <p className="text-sm text-muted">Places you add (a Google Maps link, an address or a place name) show up here, grouped by city.</p>
+          )}
+        </Card>
+        <Card className="p-4">
+          <SectionTitle aside={<Icon name="sun" className="size-4 text-muted" />}>Weather</SectionTitle>
+          <Suspense fallback={<p className="text-sm text-muted">Loading the forecast…</p>}>
+            <WeatherSection trip={trip} plan={plan} today={today} />
+          </Suspense>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <TripBoard
           key={boardVersion(items)}
           tripId={trip.id}
@@ -126,6 +187,11 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
         />
 
         <div className="space-y-5">
+          <Card className="p-4">
+            <SectionTitle aside={<Icon name="suitcase" className="size-4 text-muted" />}>Packing list</SectionTitle>
+            <PackingList tripId={trip.id} items={packing.map(({ id, label, category, reason, packed }) => ({ id, label, category, reason, packed }))} />
+          </Card>
+
           {currencies.length > 0 && (
             <Card className="p-4">
               <SectionTitle>Exchange rates</SectionTitle>
