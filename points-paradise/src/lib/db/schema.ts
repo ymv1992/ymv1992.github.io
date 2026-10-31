@@ -535,6 +535,53 @@ export const tripPackingItems = pgTable(
   (t) => [index('trip_packing_trip_idx').on(t.tripId)],
 )
 
+/** What an idea card shows: a Wikivoyage listing or a saved TikTok, with its place when known. */
+export interface TripSuggestionData {
+  title: string
+  /** "see" | "do" | "eat" | "drink" | "buy" for guides; "tiktok" for videos. */
+  type: string
+  description: string | null
+  address: string | null
+  hours: string | null
+  price: string | null
+  url: string | null
+  lat: number | null
+  lng: number | null
+  photo: PlacePhoto | null
+  /** The city it belongs to. */
+  city: string | null
+  countryCode: string | null
+  /** Credit: the Wikivoyage page, or the TikTok creator. */
+  sourceTitle: string | null
+  sourceUrl: string | null
+  /** TikTok only. */
+  videoId?: string | null
+  caption?: string | null
+  /** Other place names found in a TikTok caption, for the owner to pick from. */
+  candidates?: string[]
+}
+
+/** Ideas offered for a trip (from Wikivoyage or saved TikToks) and what the owner did with them. */
+export const tripSuggestions = pgTable(
+  'trip_suggestions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tripId: uuid('trip_id')
+      .notNull()
+      .references(() => trips.id, { onDelete: 'cascade' }),
+    source: text('source').$type<'wikivoyage' | 'tiktok'>().notNull(),
+    /** The listing key or TikTok video id. */
+    key: text('key').notNull(),
+    status: text('status').$type<'new' | 'liked' | 'skipped'>().notNull().default('new'),
+    data: jsonb('data').$type<TripSuggestionData>().notNull(),
+    /** The trip item made from it, once liked. */
+    itemId: uuid('item_id').references(() => tripItems.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('trip_suggestions_key_idx').on(t.tripId, t.source, t.key)],
+)
+
 /** Cached place lookups (map position and photo), so each place is looked up once. */
 export const placeLookups = pgTable('place_lookups', {
   key: text('key').primaryKey(),

@@ -12,7 +12,7 @@ const WIKIDATA_API = 'https://www.wikidata.org/w/api.php'
 const wikipediaApi = (lang: string) => `https://${lang}.wikipedia.org/w/api.php`
 const PHOTO_WIDTH = 800
 
-async function api(base: string, params: Record<string, string>, fetchImpl: typeof fetch): Promise<unknown> {
+export async function api(base: string, params: Record<string, string>, fetchImpl: typeof fetch): Promise<unknown> {
   const qs = new URLSearchParams({ format: 'json', formatversion: '2', ...params })
   const res = await fetchImpl(`${base}?${qs}`, { headers: { 'User-Agent': PLACES_USER_AGENT }, signal: AbortSignal.timeout(8000) })
   if (!res.ok) throw new Error(`Wikimedia responded ${res.status}`)
@@ -95,22 +95,19 @@ async function fileFromSearch(name: string, lat: number, lng: number, fetchImpl:
   return null
 }
 
-/** Credit and a resized copy of a Commons file; null unless it is a freely licensed photo hosted on Commons. */
-async function commonsPhoto(file: string, fetchImpl: typeof fetch): Promise<PlacePhoto | null> {
-  const data = (await api(COMMONS_API, { action: 'query', titles: `File:${file}`, prop: 'imageinfo', iiprop: 'url|mime|extmetadata', iiurlwidth: String(PHOTO_WIDTH) }, fetchImpl)) as {
-    query?: {
-      pages?: {
-        missing?: boolean
-        imageinfo?: {
-          thumburl?: string
-          descriptionurl?: string
-          mime?: string
-          extmetadata?: Record<string, { value?: string } | undefined>
-        }[]
-      }[]
-    }
-  }
-  const page = data.query?.pages?.[0]
+type CommonsPage = {
+  title?: string
+  missing?: boolean
+  imageinfo?: {
+    thumburl?: string
+    descriptionurl?: string
+    mime?: string
+    extmetadata?: Record<string, { value?: string } | undefined>
+  }[]
+}
+
+/** A Commons file's credit and resized copy; null unless it is a freely licensed photo hosted on Commons. */
+function photoFromPage(page: CommonsPage | undefined): PlacePhoto | null {
   const info = page?.imageinfo?.[0]
   if (!page || page.missing || !info?.thumburl || !info.descriptionurl) return null
   // Photos only: maps, logos and diagrams are usually SVG or PNG.
@@ -122,6 +119,41 @@ async function commonsPhoto(file: string, fetchImpl: typeof fetch): Promise<Plac
   const credit = plain(meta.Artist?.value) || plain(meta.Credit?.value) || 'Wikimedia Commons contributor'
   if (!/^https:\/\/upload\.wikimedia\.org\//.test(info.thumburl) || !/^https:\/\/commons\.wikimedia\.org\//.test(info.descriptionurl)) return null
   return { url: info.thumburl, pageUrl: info.descriptionurl, credit: credit.slice(0, 120), license: license.slice(0, 60), source: 'wikimedia' }
+}
+
+async function commonsPhoto(file: string, fetchImpl: typeof fetch): Promise<PlacePhoto | null> {
+  const data = (await api(COMMONS_API, { action: 'query', titles: `File:${file}`, prop: 'imageinfo', iiprop: 'url|mime|extmetadata', iiurlwidth: String(PHOTO_WIDTH) }, fetchImpl)) as {
+    query?: { pages?: CommonsPage[] }
+  }
+  return photoFromPage(data.query?.pages?.[0])
+}
+
+/** "some_file.jpg" or "File:Some file.jpg" → "Some file.jpg", as Commons names it. */
+export function commonsName(file: string): string {
+  const name = file
+    .replace(/^(file|image):/i, '')
+    .replace(/_/g, ' ')
+    .trim()
+  return name.charAt(0).toUpperCase() + name.slice(1)
+}
+
+/** Photos for many Commons files at once (50 per request). Files that aren't free photos are left out. */
+export async function commonsPhotos(files: readonly string[], fetchImpl: typeof fetch = fetch): Promise<{ photos: Map<string, PlacePhoto>; requests: number }> {
+  const names = [...new Set(files.map(commonsName).filter(Boolean))]
+  const photos = new Map<string, PlacePhoto>()
+  let requests = 0
+  for (let i = 0; i < names.length; i += 50) {
+    const batch = names.slice(i, i + 50)
+    requests++
+    const data = (await api(COMMONS_API, { action: 'query', titles: batch.map((n) => `File:${n}`).join('|'), prop: 'imageinfo', iiprop: 'url|mime|extmetadata', iiurlwidth: String(PHOTO_WIDTH) }, fetchImpl)) as {
+      query?: { pages?: CommonsPage[] }
+    }
+    for (const page of data.query?.pages ?? []) {
+      const photo = photoFromPage(page)
+      if (photo && page.title) photos.set(commonsName(page.title), photo)
+    }
+  }
+  return { photos, requests }
 }
 
 /** A photo of the place, or null when no freely licensed photo clearly shows it. */

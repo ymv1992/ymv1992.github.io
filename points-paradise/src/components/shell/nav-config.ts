@@ -24,6 +24,7 @@ export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
     items: [
       { href: '/saved', label: 'Saved', icon: 'bookmark', primary: true },
       { href: '/trips', label: 'My Trips', icon: 'suitcase' },
+      { href: '/ideas', label: 'Ideas', icon: 'heart' },
       { href: '/trip-architect', label: 'Trip Architect', icon: 'sparkles' },
       { href: '/transfers', label: 'Transfer Center', icon: 'transfer' },
       { href: '/positioning', label: 'Positioning', icon: 'plane' },

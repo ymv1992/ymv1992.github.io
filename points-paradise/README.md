@@ -477,6 +477,35 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
     - A trip with a local currency adds some local cash.
     - You can tick things off, add your own items, or remove suggestions.
       Removed suggestions aren't suggested again.
+- **Ideas (Plan → Ideas).** Things to do for the places your trips go.
+  Pick a trip at the top; each trip opens its own page of ideas.
+  - **Save from TikTok.** In TikTok, tap Share → Copy link and paste it.
+    - On Android, with the site installed to the home screen, it also
+      appears in TikTok's share menu.
+    - The site reads the video's caption and creator from TikTok's public
+      embed info (oEmbed). It doesn't search or scrape TikTok.
+    - It finds the place the caption names (a 📍 pin, "Location:", or "at
+      <Place>") near the trip's destination.
+    - It shows the video in TikTok's own player when you tap ▶ Watch.
+    - Nothing is added until you confirm or fix the place and tap **Add to
+      Ideas**. The idea gets the map, photo and city like any other place,
+      and its notes keep the caption and the creator's name.
+    - If the caption doesn't say where, you type the place yourself; the
+      site never guesses.
+  - **Things to do in each city.** One card at a time, from Wikivoyage's
+    free travel guide for each city on the trip. If no places are pinned
+    yet, it uses the trip's destination. Big cities include their district
+    pages.
+    - Each card has a photo from Wikimedia Commons (credited), what it is,
+      the address, hours, price and the official site.
+    - Swipe right or tap ♥ to add it to the trip's Ideas, with its pin and
+      photo. Swipe left or tap ✕ to skip it.
+    - Liked and skipped cards don't come back; **Show the ones I skipped**
+      brings skipped ones back.
+    - Guides are cached for 30 days. Their text is CC BY-SA 4.0 and is
+      credited on the page and in each added idea.
+    - Daily caps keep usage light: 300 Wikivoyage requests and 200 TikTok
+      lookups a day.
   - **Maps and photos.** Paste a Google link (Google Maps links, short
     `maps.app.goo.gl` links, and `share.google` / `g.co` links shared from
     Google Search or the Google app), or fill in a place, and the item shows a map

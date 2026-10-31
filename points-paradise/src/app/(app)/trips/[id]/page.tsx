@@ -188,6 +188,14 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
 
         <div className="space-y-5">
           <Card className="p-4">
+            <SectionTitle aside={<Icon name="heart" className="size-4 text-muted" />}>Find things to do</SectionTitle>
+            <p className="text-sm text-muted">Save places from TikTok, or swipe through ideas for each city on this trip.</p>
+            <Link href={`/ideas?trip=${trip.id}`} className={`${buttonClass('secondary', 'sm')} mt-3`}>
+              Open Ideas
+            </Link>
+          </Card>
+
+          <Card className="p-4">
             <SectionTitle aside={<Icon name="suitcase" className="size-4 text-muted" />}>Packing list</SectionTitle>
             <PackingList tripId={trip.id} items={packing.map(({ id, label, category, reason, packed }) => ({ id, label, category, reason, packed }))} />
           </Card>
