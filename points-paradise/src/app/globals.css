@@ -122,26 +122,29 @@ body {
 }
 
 /* Form controls share one quiet style. */
-.field {
-  width: 100%;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--ink);
-  border-radius: 10px;
-  padding: 0.55rem 0.75rem;
-  font-size: 0.95rem;
-}
-.field:focus {
-  outline: 2px solid var(--primary);
-  outline-offset: 0;
-  border-color: transparent;
-}
-.label {
-  display: block;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--muted);
-  margin-bottom: 0.3rem;
+/* In the components layer so utilities (w-28, text-xs…) can still size a control. */
+@layer components {
+  .field {
+    width: 100%;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    border-radius: 10px;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.95rem;
+  }
+  .field:focus {
+    outline: 2px solid var(--primary);
+    outline-offset: 0;
+    border-color: transparent;
+  }
+  .label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 0.3rem;
+  }
 }
 
 @keyframes pp-fade-up {

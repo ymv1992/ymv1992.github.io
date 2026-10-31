@@ -162,7 +162,7 @@ function itemBlock(w: Writer, item: TripItemRow, rates: Record<string, TripRate>
   const meta = [
     TRIP_KIND_LABEL[item.kind],
     item.place,
-    item.points ? `${item.points.toLocaleString('en-US')} Chase pts` : null,
+    item.points ? `${item.points.toLocaleString('en-US')} points` : null,
     item.costAmount ? costLabel(item.costAmount, item.costCurrency, rates, { code: item.costCurrency !== 'USD' }) : null,
   ]
     .filter(Boolean)
@@ -196,7 +196,7 @@ export async function buildTripPdf(trip: TripRow, items: TripItemRow[], now = ne
   const sums = [
     `${totals.items} thing${totals.items === 1 ? '' : 's'} planned`,
     totals.done ? `${totals.done} done` : null,
-    totals.points ? `${totals.points.toLocaleString('en-US')} Chase points` : null,
+    totals.points ? `${totals.points.toLocaleString('en-US')} points used` : null,
     totals.cashUsd ? `${formatUsd(totals.cashUsd)} cash` : null,
     ...Object.entries(totals.unconverted).map(([c, a]) => `plus ${formatMoney(a, c, { code: true })} (no rate yet)`),
   ].filter(Boolean)
