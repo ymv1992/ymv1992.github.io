@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useState } from 'react'
 import { saveTripItemAction, type TripItemFormState } from '@/app/actions/trip-actions'
 import { CURRENCIES, currencyName } from '@/lib/trips/money'
 import { TRIP_ITEM_KINDS, dayHeading, type TripDayView, type TripItemView } from '@/lib/trips/shared'
@@ -31,6 +31,7 @@ export function TripItemForm({
   const p = `ti-${item?.id ?? `new-${day ?? 'ideas'}`}`
   const dayValue = item ? (item.day ?? 'ideas') : (day ?? 'ideas')
   const costCurrency = item?.costAmount != null ? item.costCurrency : (currency ?? 'USD')
+  const [usedPoints, setUsedPoints] = useState(!!item?.points)
   // The trip's currency and dollars first, then everything else.
   const firstCodes = [...new Set([currency, 'USD'].filter((c): c is string => !!c))]
 
@@ -93,7 +94,17 @@ export function TripItemForm({
           Cost <span className="text-faint">(optional)</span>
         </label>
         <div className="flex gap-2">
-          <input id={`${p}-cost`} name="costAmount" type="number" min={0} step="any" defaultValue={item?.costAmount ?? ''} className="field tabular min-w-0 flex-1" />
+          <input
+            id={`${p}-cost`}
+            name="costAmount"
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="any"
+            defaultValue={item?.costAmount ?? ''}
+            placeholder="0"
+            className="field tabular min-w-0 flex-1"
+          />
           <label htmlFor={`${p}-cur`} className="sr-only">
             Currency
           </label>
@@ -115,10 +126,30 @@ export function TripItemForm({
         <p className="mt-1 text-xs text-muted">Enter it in the local currency; it&rsquo;s shown in dollars too.</p>
       </div>
       <div className="sm:col-span-3">
-        <label htmlFor={`${p}-pts`} className="label">
-          Chase points <span className="text-faint">(optional)</span>
+        <label className="flex items-center gap-2 text-sm sm:mt-6">
+          <input type="checkbox" checked={usedPoints} onChange={(e) => setUsedPoints(e.target.checked)} /> I booked this with points
         </label>
-        <input id={`${p}-pts`} name="points" type="number" min={0} step={1} defaultValue={item?.points ?? ''} className="field tabular" />
+        {/* Only sent while ticked, so unticking clears the points on save. */}
+        {usedPoints && (
+          <div className="mt-2">
+            <label htmlFor={`${p}-pts`} className="label">
+              Points used
+            </label>
+            <input
+              id={`${p}-pts`}
+              name="points"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              step={1}
+              defaultValue={item?.points ?? ''}
+              placeholder="e.g. 60000"
+              className="field tabular"
+              autoFocus={!item?.points}
+            />
+            <p className="mt-1 text-xs text-muted">Put any taxes and fees you paid in Cost.</p>
+          </div>
+        )}
       </div>
       <div className="sm:col-span-6">
         <label htmlFor={`${p}-notes`} className="label">

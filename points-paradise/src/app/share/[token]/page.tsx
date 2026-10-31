@@ -37,7 +37,7 @@ export default async function SharedTripPage({ params }: { params: Promise<{ tok
         </a>
         <span className="text-sm text-muted">
           {totals.done} of {totals.items} done
-          {totals.points ? ` · ${points(totals.points)} Chase pts` : ''}
+          {totals.points ? ` · ${points(totals.points)} points used` : ''}
           {totals.cashUsd ? ` · ${formatUsd(totals.cashUsd)}` : ''}
           {Object.entries(totals.unconverted).map(([c, a]) => ` · plus ${formatMoney(a, c)}`)}
         </span>

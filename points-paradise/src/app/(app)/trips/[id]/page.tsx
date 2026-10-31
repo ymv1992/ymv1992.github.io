@@ -93,9 +93,9 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
         <Stat label="Planned" value={totals.items} />
         <Stat label="Done" value={`${totals.done} of ${totals.items}`} />
         <Stat
-          label="Chase points"
+          label="Points used"
           value={totals.points ? points(totals.points) : '—'}
-          hint={totals.points ? (short ? <span className="text-warn">{points(short)} more than your balance</span> : `You have ${points(wallet.chaseBalance)}`) : 'Add points to items to total them'}
+          hint={totals.points ? (short ? <span className="text-warn">{points(short)} more than your balance</span> : `You have ${points(wallet.chaseBalance)}`) : 'Tick “I booked this with points” on an item to count it'}
         />
         <Stat
           label="Cash"
