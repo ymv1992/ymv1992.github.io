@@ -11,6 +11,7 @@ import { integrationStatus } from '@/lib/server/config'
 import { getEvaluationWithArchive } from '@/lib/server/loaders'
 import { AwardCalendar, type CalendarCell } from '@/components/calendar/award-calendar'
 import { AwardSearchForm } from '@/components/calendar/award-search-form'
+import { CashFareForm } from '@/components/calendar/cash-fare-form'
 import { HotelSearchForm } from '@/components/calendar/hotel-search-form'
 import { SearchPanel } from '@/components/calendar/search-panel'
 import { DISCOVERY_DESTINATIONS } from '@/lib/jobs/discovery'
@@ -141,6 +142,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
               />
             }
             hotels={<HotelSearchForm defaults={{ startDate: today, endDate: in60, nights: Math.min(5, Math.max(1, data.account.profile.tripNightsMin ?? 3)) }} />}
+            cash={integrationStatus().serpApi ? <CashFareForm defaults={{ from: data.account.profile.homeAirports[0] ?? 'LAX', date: in7 }} /> : undefined}
           />
         ) : (
           <p className="text-sm text-muted">

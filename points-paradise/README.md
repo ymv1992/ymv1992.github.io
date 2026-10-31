@@ -390,6 +390,26 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
   1–5 nights and the programs (Hyatt, Marriott, IHG, Wyndham). Each search
   is one lookup. Results show Chase points, the hotel's cash rate and the
   value, best value first.
+- **Cash fares (Award Calendar → Cash fares).** Search Google Flights for
+  cash prices, one way or round trip, by cabin, number of travelers and
+  nonstop only. Each search uses one SerpApi search from the same monthly
+  allowance as cash prices.
+  - Results show times, flying time, stops (and overnight layovers), flight
+    numbers and aircraft.
+  - Google's view of today's prices appears at the top ("typical, usually
+    $280–$520").
+  - Each fare shows the Chase points it earns with your card, booked with
+    the airline and through Chase Travel. For example, Sapphire Reserve
+    earns 4× with the airline and 8× through Chase Travel, and Sapphire
+    Preferred earns 2× and 5×.
+  - It also shows the Chase Travel price at which the extra points stop
+    being worth it, valuing points at your point value in Settings.
+  - Type the price Chase Travel shows to see which way comes out ahead.
+    The app can't read Chase Travel's prices.
+  - Earning rates are Chase's published rates. Cards whose flight rates
+    couldn't be confirmed are labelled and assume 1×.
+  - **Open this search in Google Flights** goes to Google's own link for
+    the search.
 - **Award Calendar.** Heatmap, price-history chart, seasonal table and
   predictions marked with their evidence tier. Predictions are withheld when
   there is too little data. Pick a route, then a **cabin tab** (Economy,
