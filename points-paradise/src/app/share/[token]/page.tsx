@@ -5,7 +5,8 @@ import { getSharedTrip, tripDayCount, tripDayDate, tripTotals } from '@/lib/data
 import { dateRange, points } from '@/lib/format'
 import { costLabel, formatMoney, formatUsd } from '@/lib/trips/money'
 import { isGoogleMapsLink } from '@/lib/places/google-maps-link'
-import { TRIP_KIND_LABEL, dayHeading, itemMapsLink, type TripDayView } from '@/lib/trips/shared'
+import { TRIP_KIND_LABEL, dayHeading, itemMapsLink, toItemView, type TripDayView } from '@/lib/trips/shared'
+import { BookingPanel } from '@/components/trips/booking-panel'
 import { hasPlaceMedia, PlaceMediaPanel, PlaceThumb } from '@/components/trips/place-media'
 import { Icon } from '@/components/icons'
 import { Card, buttonClass } from '@/components/ui'
@@ -21,6 +22,7 @@ export default async function SharedTripPage({ params }: { params: Promise<{ tok
   const { trip, items } = data
   const days: TripDayView[] = Array.from({ length: tripDayCount(trip) }, (_, i) => ({ day: i + 1, date: tripDayDate(trip, i + 1) }))
   const totals = tripTotals(items, trip.rates)
+  const today = new Date().toISOString().slice(0, 10)
   const sections = [
     ...days.map((d) => ({ key: `d${d.day}`, title: dayHeading(d), list: items.filter((i) => i.day === d.day) })),
     { key: 'ideas', title: 'Ideas', list: items.filter((i) => i.day == null) },
@@ -79,6 +81,7 @@ export default async function SharedTripPage({ params }: { params: Promise<{ tok
                           )}
                         </p>
                         {i.notes && <p className="mt-1 text-xs whitespace-pre-line">{i.notes}</p>}
+                        <BookingPanel item={toItemView(i)} date={i.day ? tripDayDate(trip, i.day) : null} today={today} readOnly />
                       </div>
                       <PlaceThumb item={i} />
                     </div>

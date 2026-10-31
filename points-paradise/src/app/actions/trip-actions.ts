@@ -10,16 +10,19 @@ import { loadAccount } from '@/lib/data/account'
 import { getDeal } from '@/lib/data/deals'
 import { evaluateMany } from '@/lib/data/evaluation'
 import { enrichTripItem, itemsNeedingMedia } from '@/lib/data/place-media'
+import { lookUpTripFlight } from '@/lib/data/trip-flights'
 import { ensureTripRates, refreshTripRate, setTripRate } from '@/lib/data/trip-rates'
 import {
   addDealToTrip,
   addTripItem,
   arrangeTrip,
+  cleanBooking,
   createTrip,
   deleteTrip,
   deleteTripItem,
   setTripItemDone,
   setTripSharing,
+  tripBookingInputSchema,
   tripInputSchema,
   tripItemInputSchema,
   tripLayoutSchema,
@@ -31,7 +34,7 @@ import {
 } from '@/lib/data/trips'
 import { CABINS } from '@/lib/domain/constants'
 import { currencyName, isKnownCurrency } from '@/lib/trips/money'
-import { integrationStatus } from '@/lib/server/config'
+import { config, integrationStatus } from '@/lib/server/config'
 import { requireUserId } from '@/lib/server/session'
 import type { FormState } from '@/components/action-form'
 
@@ -96,9 +99,14 @@ export async function saveTripItemAction(_prev: TripItemFormState, fd: FormData)
   if (!tripId.success) return { error: 'Trip not found' }
   const parsed = tripItemInputSchema.safeParse(Object.fromEntries(fd))
   if (!parsed.success) return { error: firstIssue(parsed.error) }
+  // Booking details arrive as b_… fields; only the ones that fit the kind of item are kept.
+  const bookingFields = Object.fromEntries([...fd.entries()].filter(([k]) => k.startsWith('b_')).map(([k, v]) => [k.slice(2), v]))
+  const booking = tripBookingInputSchema.safeParse(bookingFields)
+  if (!booking.success) return { error: firstIssue(booking.error) }
+  const input = { ...parsed.data, booking: cleanBooking(parsed.data.kind, booking.data) }
   const db = await getDb()
   const itemId = fd.get('itemId')
-  const r = itemId ? await updateTripItem(db, userId, String(itemId), parsed.data) : await addTripItem(db, userId, tripId.data, parsed.data)
+  const r = itemId ? await updateTripItem(db, userId, String(itemId), input) : await addTripItem(db, userId, tripId.data, input)
   if (!r.ok) return { error: r.error }
   // New items are looked up unless they are plain notes; edits only when where-it-is changed.
   const lookUp = itemId ? 'placeChanged' in r && r.placeChanged : parsed.data.kind !== 'note' || parsed.data.place != null || parsed.data.url != null
@@ -225,4 +233,19 @@ export async function refreshTripRateAction(tripId: string, code: string): Promi
   if (!rate) return { ok: false, message: `No free source has a ${currencyName(code)} rate right now. You can type your own.` }
   refresh(tripId)
   return { ok: true, message: `Updated to today's rate: 1 USD = ${rate.perUsd.toLocaleString('en-US', { maximumFractionDigits: 4 })} ${code}.` }
+}
+
+/** Fills a flight's times and aircraft from Google Flights (one SerpApi search). */
+export async function lookUpTripFlightAction(tripId: string, itemId: string): Promise<{ ok: boolean; message: string }> {
+  const userId = await requireUserId()
+  if (!uuid.safeParse(tripId).success || !uuid.safeParse(itemId).success) return { ok: false, message: 'Not found' }
+  const apiKey = config.serpApiKey()
+  if (!apiKey) return { ok: false, message: 'Looking up flights needs the SerpApi key (SERPAPI_API_KEY). See Settings → Data sources.' }
+  const db = await getDb()
+  const { settings } = await loadAccount(db, userId)
+  const r = await lookUpTripFlight(db, userId, itemId, { apiKey, now: new Date(), fetch, monthlyCapUsd: settings.monthlyApiBudgetUsd })
+  if (!r.ok) return { ok: false, message: r.error }
+  refresh(tripId)
+  const s = r.schedule
+  return { ok: true, message: `Found it: departs ${s.departTime}, arrives ${s.arriveTime}${s.arriveDayOffset ? ' (next day)' : ''}${s.aircraft ? `, ${s.aircraft}` : ''}.` }
 }

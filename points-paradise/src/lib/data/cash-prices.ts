@@ -25,6 +25,31 @@ export async function serpApiMonthUse(db: AppDb, now: Date): Promise<{ used: num
 }
 
 /**
+ * Checks that one more SerpApi search fits this month's free searches and the
+ * paid-request cap, and records a skipped search when it doesn't.
+ */
+export async function serpApiGate(
+  db: AppDb,
+  p: { provider: 'serpapi_flights' | 'serpapi_hotels'; jobType: string; params: Record<string, unknown>; now: Date; monthlyCapUsd: number; searches?: number },
+): Promise<{ ok: true; costUsd: number } | { ok: false; reason: string }> {
+  const n = p.searches ?? 1
+  const { used, quota } = await serpApiMonthUse(db, p.now)
+  if (!withinQuota(used, n, quota)) {
+    await logJob(db, { provider: p.provider, jobType: p.jobType, params: p.params, status: 'skipped_quota', startedAt: p.now, error: 'Monthly quota reached' })
+    return { ok: false, reason: `This month's ${quota} free Google searches are used up (${used} used). They reset on the 1st.` }
+  }
+  const [src] = await db.select().from(dataSources).where(eq(dataSources.id, p.provider))
+  const cost = src?.costPerRequestUsd ?? 0
+  const spent = (await monthSpendUsd(db, p.now)) - (await monthSpendUsd(db, p.now, 'anthropic'))
+  const decision = canSpend(spent, cost * n, p.monthlyCapUsd)
+  if (!decision.allowed) {
+    await logJob(db, { provider: p.provider, jobType: p.jobType, params: p.params, status: 'skipped_budget', startedAt: p.now, error: decision.reason })
+    return { ok: false, reason: decision.reason }
+  }
+  return { ok: true, costUsd: cost }
+}
+
+/**
  * Looks up a comparable cash price for one deal through SerpApi (Google
  * Flights or Google Hotels), within the monthly quota and paid-request cap.
  * A lookup that finds no matching fare is remembered so it is not repeated
@@ -42,19 +67,9 @@ export async function lookupCashPrice(
   const canHotel = isHotel && deal.hotel && deal.travelStart && deal.travelEnd
   if (!canFlight && !canHotel) return { status: 'skipped', reason: 'This deal is missing the route, property or dates needed for a cash lookup.' }
 
-  const { used, quota } = await serpApiMonthUse(db, now)
-  if (!withinQuota(used, 1, quota)) {
-    await logJob(db, { provider, jobType: deps.jobType, params: { dealId: deal.id }, status: 'skipped_quota', startedAt: now, error: 'Monthly quota reached' })
-    return { status: 'skipped', reason: `This month's ${quota} free cash-price lookups are used up. They reset on the 1st.` }
-  }
-  const [src] = await db.select().from(dataSources).where(eq(dataSources.id, provider))
-  const cost = src?.costPerRequestUsd ?? 0
-  const spent = (await monthSpendUsd(db, now)) - (await monthSpendUsd(db, now, 'anthropic'))
-  const decision = canSpend(spent, cost, deps.monthlyCapUsd)
-  if (!decision.allowed) {
-    await logJob(db, { provider, jobType: deps.jobType, params: { dealId: deal.id }, status: 'skipped_budget', startedAt: now, error: decision.reason })
-    return { status: 'skipped', reason: decision.reason }
-  }
+  const gate = await serpApiGate(db, { provider, jobType: deps.jobType, params: { dealId: deal.id }, now, monthlyCapUsd: deps.monthlyCapUsd })
+  if (!gate.ok) return { status: 'skipped', reason: gate.reason }
+  const cost = gate.costUsd
 
   const startedAt = new Date()
   try {
@@ -102,7 +117,7 @@ export async function lookupCashPrice(
 }
 
 /** Plain-language reason for a failed lookup; the full error stays in Settings → Usage. */
-function lookupError(message: string): string {
+export function lookupError(message: string): string {
   if (/timeout|timed out|aborted/i.test(message)) return 'Google took too long to answer. Try again in a minute.'
   if (/\b(401|403)\b|invalid api key/i.test(message)) return 'SerpApi did not accept the key. Check SERPAPI_API_KEY in Vercel.'
   if (/\b429\b|run out of searches/i.test(message)) return 'SerpApi says the plan is out of searches or busy. Try again later.'

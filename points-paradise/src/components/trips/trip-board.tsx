@@ -27,6 +27,7 @@ import { costLabel, type TripRate } from '@/lib/trips/money'
 import { TRIP_KIND_LABEL, dayHeading, itemMapsLink, type TripDayView, type TripItemView } from '@/lib/trips/shared'
 import { Icon } from '../icons'
 import { cx } from '../ui'
+import { BookingPanel } from './booking-panel'
 import { hasPlaceMedia, PlaceMediaPanel, PlaceThumb } from './place-media'
 import { TripItemForm } from './trip-item-form'
 
@@ -55,6 +56,7 @@ export function TripBoard({
   rates,
   days,
   items,
+  today,
 }: {
   tripId: string
   destination: string
@@ -63,6 +65,8 @@ export function TripBoard({
   rates: Record<string, TripRate>
   days: TripDayView[]
   items: TripItemView[]
+  /** Today's date (YYYY-MM-DD), from the server. */
+  today: string
 }) {
   const [columns, setColumns] = useState<Columns>(() => buildColumns(days, items))
   const [done, setDone] = useState<Record<string, boolean>>(() => Object.fromEntries(items.map((i) => [i.id, i.done])))
@@ -226,7 +230,19 @@ export function TripBoard({
                         <TripItemForm tripId={tripId} days={days} currency={currency} item={item} onCancel={() => setEditing(null)} />
                       </li>
                     ) : (
-                      <SortableItem key={id} item={item} done={!!done[id]} destination={destination} rates={rates} onToggle={(v) => toggleDone(id, v)} onEdit={() => setEditing(id)} onRemove={() => remove(item)} />
+                      <SortableItem
+                        key={id}
+                        item={item}
+                        done={!!done[id]}
+                        destination={destination}
+                        rates={rates}
+                        tripId={tripId}
+                        date={s.day == null ? null : (days.find((d) => d.day === s.day)?.date ?? null)}
+                        today={today}
+                        onToggle={(v) => toggleDone(id, v)}
+                        onEdit={() => setEditing(id)}
+                        onRemove={() => remove(item)}
+                      />
                     )
                   })}
                 </Column>
@@ -243,7 +259,7 @@ export function TripBoard({
             )
           })}
         </div>
-        <DragOverlay>{active ? <ItemCard item={active} done={!!done[active.id]} destination={destination} rates={rates} overlay /> : null}</DragOverlay>
+        <DragOverlay>{active ? <ItemCard item={active} done={!!done[active.id]} destination={destination} rates={rates} date={null} today={today} overlay /> : null}</DragOverlay>
       </DndContext>
     </div>
   )
@@ -266,6 +282,9 @@ function SortableItem(props: {
   done: boolean
   destination: string
   rates: Record<string, TripRate>
+  tripId: string
+  date: string | null
+  today: string
   onToggle: (v: boolean) => void
   onEdit: () => void
   onRemove: () => void
@@ -297,6 +316,9 @@ function ItemCard({
   done,
   destination,
   rates,
+  tripId,
+  date,
+  today,
   handle,
   overlay,
   onToggle,
@@ -307,6 +329,9 @@ function ItemCard({
   done: boolean
   destination: string
   rates: Record<string, TripRate>
+  tripId?: string
+  date: string | null
+  today: string
   handle?: React.ReactNode
   overlay?: boolean
   onToggle?: (v: boolean) => void
@@ -372,6 +397,7 @@ function ItemCard({
           </div>
         )}
       </div>
+      {!overlay && <BookingPanel tripId={tripId} item={item} date={date} today={today} />}
       {media && showMedia && <PlaceMediaPanel item={item} destination={destination} />}
     </div>
   )

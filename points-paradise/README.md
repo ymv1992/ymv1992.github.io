@@ -416,7 +416,27 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
     removed with the trip.
   - **Share with a partner.** Turns on a read-only link (`/share/<token>`)
     that shows only that trip and isn't indexed by search engines. Stopping
-    sharing turns the link off.
+    sharing turns the link off. The shared page and its PDF leave out
+    confirmation numbers.
+  - **Booking details.** Open **Booking details** when adding or editing an
+    item.
+    - Every item except notes can hold a confirmation number.
+    - Flights also take a flight number, airports, arrival time, seat and
+      aircraft. The item's time is the departure.
+    - Stays also take nights, check-out time and the hotel's phone. The
+      item's time is check-in, and the check-out day is worked out from the
+      nights.
+    - On the trip, each flight or stay has a **Flight details** or **Stay
+      details** dropdown.
+    - **Find times & aircraft** looks a flight up in Google Flights. It uses
+      one SerpApi search from the same monthly allowance as cash prices, and
+      works only for upcoming flights on a trip with dates. It fills in the
+      departure time when that is empty and shows the scheduled arrival,
+      flying time and aircraft, marked with the day it was checked. Your own
+      entries are never overwritten; where they differ, Google's value is
+      shown next to yours.
+    - Changing the flight number, airports or day drops the old lookup.
+    - No passwords or card numbers are stored.
   - **Maps and photos.** Paste a Google link (Google Maps links, short
     `maps.app.goo.gl` links, and `share.google` / `g.co` links shared from
     Google Search or the Google app), or fill in a place, and the item shows a map

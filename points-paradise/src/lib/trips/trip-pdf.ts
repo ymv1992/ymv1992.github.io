@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import { TRIP_KIND_LABEL, tripDayCount, tripDayDate, tripTotals, type TripItemRow, type TripRow } from '../data/trips'
 import { costLabel, formatMoney, formatUsd, type TripRate } from './money'
+import { bookingLines } from './shared'
 
 const PAGE = { width: 612, height: 792 } // US Letter, points
 const MARGIN = 54
@@ -158,7 +159,7 @@ class Writer {
   }
 }
 
-function itemBlock(w: Writer, item: TripItemRow, rates: Record<string, TripRate>) {
+function itemBlock(w: Writer, item: TripItemRow, rates: Record<string, TripRate>, date: string | null, hideConfirmation: boolean) {
   const meta = [
     TRIP_KIND_LABEL[item.kind],
     item.place,
@@ -175,12 +176,15 @@ function itemBlock(w: Writer, item: TripItemRow, rates: Record<string, TripRate>
   w.text(item.time ? `${item.time}   ${item.title}` : item.title, { font: 'bold', size: 11, x })
   if (meta) w.text(meta, { size: 9.5, color: MUTED, x })
   if (item.url) w.text(item.url, { size: 8.5, color: ACCENT, x })
+  const booking = bookingLines({ kind: item.kind, time: item.time, booking: item.booking ?? null }, date, { hideConfirmation })
+  if (booking.length) w.text(booking.map((l) => `${l.label}: ${l.value}`).join('  ·  '), { size: 9, x })
   if (item.notes) w.text(item.notes, { size: 9.5, x })
   w.gap(6)
 }
 
 /** A printable itinerary: trip details, each day with its plans (and tick boxes), then unscheduled ideas. */
-export async function buildTripPdf(trip: TripRow, items: TripItemRow[], now = new Date()): Promise<Uint8Array> {
+export async function buildTripPdf(trip: TripRow, items: TripItemRow[], now = new Date(), opts: { hideConfirmation?: boolean } = {}): Promise<Uint8Array> {
+  const hide = opts.hideConfirmation ?? false
   const doc = await PDFDocument.create()
   doc.setTitle(`${trip.name} itinerary`)
   doc.setCreator('Points & Paradise')
@@ -216,7 +220,7 @@ export async function buildTripPdf(trip: TripRow, items: TripItemRow[], now = ne
     w.rule()
     const list = items.filter((i) => i.day === day)
     if (!list.length) w.text('Nothing planned yet.', { size: 9.5, color: MUTED })
-    for (const item of list) itemBlock(w, item, trip.rates)
+    for (const item of list) itemBlock(w, item, trip.rates, date, hide)
     w.gap(8)
   }
 
@@ -225,7 +229,7 @@ export async function buildTripPdf(trip: TripRow, items: TripItemRow[], now = ne
     w.ensure(48)
     w.text('Ideas (not on a day yet)', { font: 'bold', size: 13, leading: 20 })
     w.rule()
-    for (const item of ideas) itemBlock(w, item, trip.rates)
+    for (const item of ideas) itemBlock(w, item, trip.rates, null, hide)
   }
 
   w.footer(`${trip.name} · made with Points & Paradise on ${now.toISOString().slice(0, 10)}`)

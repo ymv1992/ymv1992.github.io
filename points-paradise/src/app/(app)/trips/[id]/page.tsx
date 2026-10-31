@@ -122,6 +122,7 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
           rates={trip.rates}
           days={days}
           items={items.map(toItemView)}
+          today={today}
         />
 
         <div className="space-y-5">

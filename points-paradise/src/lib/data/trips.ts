@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, max, ne, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type { AppDb } from '../db/client'
-import { deals, trips, tripItems, type TripItemKind } from '../db/schema'
+import { deals, trips, tripItems, type TripBooking, type TripItemKind } from '../db/schema'
 import { CABINS, type Cabin } from '../domain/constants'
 import type { Deal } from '../domain/types'
 import { CURRENCY_CODES, toUsd, type TripRate } from '../trips/money'
@@ -72,7 +72,77 @@ export const tripItemInputSchema = z.object({
   notes: optText(1000),
 })
 
-export type TripItemInput = z.infer<typeof tripItemInputSchema>
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a time like 09:30')
+const iataCode = z.preprocess((v) => (typeof v === 'string' ? v.trim().toUpperCase() : v), z.string().regex(/^[A-Z]{3}$/, 'Use 3-letter airport codes, like LAX'))
+const opt = <T extends z.ZodTypeAny>(t: T) => z.preprocess(blankToNull, t.nullable().default(null))
+
+/** "ua1234", "UA 0123" or "UA-123" → "UA 1234" / "UA 123". */
+export function normalizeFlightNumber(v: string): string | null {
+  const m = v
+    .trim()
+    .toUpperCase()
+    .match(/^([A-Z0-9]{2})\s*-?\s*0*(\d{1,4})([A-Z]?)$/)
+  if (!m || !/[A-Z]/.test(m[1]!)) return null
+  return `${m[1]} ${m[2]}${m[3]}`
+}
+
+/** Booking details as typed in the form (fields named b_…). Empty fields are left out. */
+export const tripBookingInputSchema = z
+  .object({
+    confirmation: opt(
+      z
+        .string()
+        .trim()
+        .max(40)
+        .transform((v) => v.toUpperCase()),
+    ),
+    flightNumber: opt(z.string().transform((v, ctx) => normalizeFlightNumber(v) ?? (ctx.addIssue({ code: 'custom', message: 'Use a flight number like UA 1234' }), z.NEVER))),
+    from: opt(iataCode),
+    to: opt(iataCode),
+    arriveTime: opt(hhmm),
+    arriveDayOffset: z.preprocess(blankToNull, z.coerce.number().int().min(0).max(2).nullable().default(null)),
+    seat: opt(z.string().trim().max(10)),
+    aircraft: opt(z.string().trim().max(80)),
+    nights: z.preprocess(blankToNull, z.coerce.number().int().min(1).max(60).nullable().default(null)),
+    checkOutTime: opt(hhmm),
+    phone: opt(z.string().trim().max(40)),
+  })
+  .partial()
+
+export type TripBookingInput = z.infer<typeof tripBookingInputSchema>
+
+const FLIGHT_FIELDS = ['flightNumber', 'from', 'to', 'arriveTime', 'arriveDayOffset', 'seat', 'aircraft'] as const
+const STAY_FIELDS = ['nights', 'checkOutTime', 'phone'] as const
+
+/** Keeps the fields that fit the kind of item, and drops empty ones; null when nothing is left. */
+export function cleanBooking(kind: TripItemKind, b: TripBookingInput | null | undefined): TripBooking | null {
+  if (!b || kind === 'note') return null
+  const keep: readonly string[] = ['confirmation', ...(kind === 'flight' ? FLIGHT_FIELDS : []), ...(kind === 'hotel' ? STAY_FIELDS : [])]
+  const out: Record<string, unknown> = {}
+  for (const k of keep) {
+    const v = (b as Record<string, unknown>)[k]
+    if (v != null && v !== '' && !(k === 'arriveDayOffset' && v === 0)) out[k] = v
+  }
+  return Object.keys(out).length ? (out as TripBooking) : null
+}
+
+/**
+ * Carries a flight's Google Flights schedule over an edit, unless the flight
+ * itself (number, airports or day) changed; then it, and an aircraft copied
+ * from it, no longer apply.
+ */
+export function mergeBooking(prev: TripBooking | null, next: TripBooking | null, sameDay: boolean): TripBooking | null {
+  const schedule = prev?.schedule
+  if (!schedule) return next
+  const sameFlight = sameDay && next?.flightNumber === prev?.flightNumber && next?.from === prev?.from && next?.to === prev?.to
+  if (sameFlight) return { ...(next ?? {}), schedule }
+  if (!next) return null
+  const { aircraft, ...rest } = next
+  const out = aircraft && aircraft === schedule.aircraft ? rest : next
+  return Object.keys(out).length ? out : null
+}
+
+export type TripItemInput = z.infer<typeof tripItemInputSchema> & { booking?: TripBooking | null }
 export type TripRow = typeof trips.$inferSelect
 export type TripItemRow = typeof tripItems.$inferSelect
 
@@ -229,10 +299,12 @@ export async function updateTripItem(db: AppDb, userId: string, itemId: string, 
   // With no place or link, the title is what gets searched, so a new title counts as a new place.
   const placeChanged =
     input.place !== found.item.place || input.url !== found.item.url || (!input.place && !input.url && (input.title !== found.item.title || input.kind !== found.item.kind))
+  const booking = input.booking === undefined ? undefined : mergeBooking(found.item.booking, input.booking, !moved)
   await db
     .update(tripItems)
     .set({
       ...input,
+      booking,
       ...(moved ? { position: await nextPosition(db, found.trip.id, input.day) } : {}),
       ...(placeChanged ? { lat: null, lng: null, mapSpan: null, photo: null, mediaCheckedAt: null } : {}),
       updatedAt: now,
@@ -320,6 +392,15 @@ export async function addDealToTrip(db: AppDb, userId: string, tripId: string, d
       points: chasePoints,
       notes: deal.travelStart && day == null ? `Travel date ${deal.travelStart} is outside this trip's days.` : null,
       dealId: deal.id,
+      // An award flight already knows its airports (and sometimes its flight number).
+      booking:
+        deal.kind === 'flight' && deal.originAirport && deal.destination.airport
+          ? cleanBooking('flight', {
+              from: deal.originAirport,
+              to: deal.destination.airport,
+              flightNumber: deal.flight?.flightNumbers.length === 1 ? normalizeFlightNumber(deal.flight.flightNumbers[0]!) : null,
+            })
+          : null,
     },
     now,
   )

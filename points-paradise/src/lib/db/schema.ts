@@ -401,6 +401,44 @@ export interface PlacePhoto {
   source: 'wikimedia'
 }
 
+/** What Google Flights listed for a flight when it was looked up (times are local at each airport). */
+export interface FlightSchedule {
+  date: string
+  flightNumber: string
+  from: string
+  to: string
+  departTime: string
+  arriveTime: string
+  /** 1 when it lands the next day, and so on. */
+  arriveDayOffset: number
+  durationMinutes: number | null
+  aircraft: string | null
+  airline: string | null
+  checkedAt: string
+}
+
+/**
+ * Booking details for a trip item. Every field is optional; which ones apply
+ * depends on the item (flights and stays have their own). Never passwords or
+ * card numbers.
+ */
+export interface TripBooking {
+  confirmation?: string | null
+  /** Flights: "UA 1234", the airports, arrival time, seat and aircraft. The item's time is the departure. */
+  flightNumber?: string | null
+  from?: string | null
+  to?: string | null
+  arriveTime?: string | null
+  arriveDayOffset?: number | null
+  seat?: string | null
+  aircraft?: string | null
+  schedule?: FlightSchedule | null
+  /** Stays: nights, check-out time and the hotel's phone. The item's time is check-in. */
+  nights?: number | null
+  checkOutTime?: string | null
+  phone?: string | null
+}
+
 export const trips = pgTable(
   'trips',
   {
@@ -462,6 +500,8 @@ export const tripItems = pgTable(
     photo: jsonb('photo').$type<PlacePhoto>(),
     /** When the map and photo were last looked up; null means not yet. */
     mediaCheckedAt: ts('media_checked_at'),
+    /** Confirmation number, flight or hotel details. */
+    booking: jsonb('booking').$type<TripBooking>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
