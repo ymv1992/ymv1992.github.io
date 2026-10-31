@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { getDb } from '@/lib/db/client'
 import { awardSearchSchema, runAwardSearch, type AwardSearchResultRow } from '@/lib/data/award-search'
+import { airlineName, AWARD_PROGRAMS } from '@/lib/domain/airlines'
 import { z } from 'zod'
 import { loadAccount } from '@/lib/data/account'
 import { lookupCashPrice } from '@/lib/data/cash-prices'
@@ -19,6 +20,10 @@ export interface SearchValues {
   startDate: string
   endDate: string
   includeHomeAirports: boolean
+  /** Airline code, or '' for any. */
+  airline: string
+  /** Program id, or '' for any. */
+  program: string
 }
 
 export interface SearchState {
@@ -40,6 +45,8 @@ export async function searchAwardsAction(prev: SearchState, fd: FormData): Promi
     startDate: String(fd.get('startDate') ?? ''),
     endDate: String(fd.get('endDate') ?? ''),
     includeHomeAirports: fd.get('includeHomeAirports') === 'on',
+    airline: String(fd.get('airline') ?? '').trim().toUpperCase(),
+    program: String(fd.get('program') ?? '').trim(),
   }
   const echo = { values, attempt: (prev.attempt ?? 0) + 1 }
   const key = config.seatsAeroKey()
@@ -47,6 +54,8 @@ export async function searchAwardsAction(prev: SearchState, fd: FormData): Promi
   const parsed = awardSearchSchema.safeParse({
     ...values,
     destination: values.destination === '' || values.destination === 'ANY' ? null : values.destination,
+    airline: values.airline || null,
+    program: values.program || null,
   })
   if (!parsed.success) {
     const i = parsed.error.issues[0]
@@ -55,10 +64,12 @@ export async function searchAwardsAction(prev: SearchState, fd: FormData): Promi
   const out = await runAwardSearch(await getDb(), userId, key, parsed.data)
   if (!out.ok) return { ...echo, error: out.error }
   revalidatePath('/', 'layout')
-  const where = out.anywhere ? 'across all destinations' : `to ${parsed.data.destination}`
+  const program = AWARD_PROGRAMS.find((p) => p.id === parsed.data.program)
+  const filters = [parsed.data.airline ? `on ${airlineName(parsed.data.airline)}` : null, program ? `with ${program.label}` : null].filter(Boolean).join(' ')
+  const where = `${out.anywhere ? 'across all destinations' : `to ${parsed.data.destination}`}${filters ? ` ${filters}` : ''}`
   const parts = [
     out.total === 0
-      ? `No open award seats found ${where} for those dates.`
+      ? `No open award seats found ${where} for those dates.${filters ? ' Try "Any airline" or "Any program" to see everything.' : ''}`
       : `${out.total} award option${out.total === 1 ? '' : 's'} found ${where}${out.anywhere ? ' (cheapest date per city and month)' : ''}, cheapest first.`,
     out.created ? `${out.created} new in Discover.` : null,
     out.truncated ? 'Some searches hit the result limit — try a shorter date range for more.' : null,

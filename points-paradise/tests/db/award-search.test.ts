@@ -4,6 +4,7 @@ import type { AppDb } from '@/lib/db/client'
 import { searchJobs } from '@/lib/db/schema'
 import { ensureOwnerAccount } from '@/lib/data/account'
 import { awardSearchSchema, runAwardSearch, type AwardSearchInput } from '@/lib/data/award-search'
+import { airlineCodes, airlineNames, programUnit } from '@/lib/domain/airlines'
 import { DISCOVERY_DESTINATIONS } from '@/lib/jobs/discovery'
 import type { SeatsAeroItem } from '@/lib/providers/seats-aero'
 import { NOW } from '../fixtures'
@@ -115,5 +116,50 @@ describe('runAwardSearch', () => {
   it('validates the date range', () => {
     expect(awardSearchSchema.safeParse({ ...base, startDate: '2026-12-01', endDate: '2026-11-01' }).success).toBe(false)
     expect(awardSearchSchema.safeParse({ ...base, origin: 'San Diego' }).success).toBe(false)
+  })
+})
+
+describe('airline and program filters', () => {
+  const route = { ...base, origin: 'LAX', destination: 'NRT', includeHomeAirports: false }
+  const rows = () => [
+    { ...item('f1', 'LAX', 'NRT', '2026-11-10', 75000), Source: 'aeroplan', JAirlines: 'NH' },
+    { ...item('f2', 'LAX', 'NRT', '2026-11-11', 80000), Source: 'united', JAirlines: 'UA, NH' },
+    { ...item('f3', 'LAX', 'NRT', '2026-11-12', 60000), Source: 'united', JAirlines: 'UA' },
+    { ...item('f4', 'LAX', 'NRT', '2026-11-13', 55000), Source: 'virginatlantic', JAirlines: 'NH' },
+  ]
+
+  it('keeps only awards flown by the chosen airline, including connections that use it', async () => {
+    const out = await runAwardSearch(db, userId, 'k', { ...route, airline: 'NH' }, { now: NOW, fetch: fakeSeats({ NRT: rows() }) })
+    expect(out.ok && out.results.map((r) => r.airline)).toEqual(['NH', 'NH', 'UA, NH'])
+  })
+
+  it('keeps only awards bookable with the chosen program', async () => {
+    const out = await runAwardSearch(db, userId, 'k', { ...route, program: 'united' }, { now: NOW, fetch: fakeSeats({ NRT: rows() }) })
+    expect(out.ok && out.results.map((r) => [r.programId, r.points])).toEqual([
+      ['united', 60000],
+      ['united', 80000],
+    ])
+    const both = await runAwardSearch(db, userId, 'k', { ...route, airline: 'NH', program: 'united' }, { now: NOW, fetch: fakeSeats({ NRT: rows() }) })
+    expect(both.ok && both.results.map((r) => r.points)).toEqual([80000])
+  })
+
+  it('picks the cheapest date per city among the chosen airline only', async () => {
+    const out = await runAwardSearch(db, userId, 'k', { ...base, includeHomeAirports: false, origin: 'LAX', airline: 'UA' }, { now: NOW, fetch: fakeSeats({ NRT: rows() }) })
+    expect(out.ok && out.results.map((r) => [r.airport, r.points])).toEqual([['NRT', 60000]])
+  })
+
+  it('rejects airlines and programs it doesn’t know', () => {
+    expect(awardSearchSchema.safeParse({ ...route, airline: 'ZZ' }).success).toBe(false)
+    expect(awardSearchSchema.safeParse({ ...route, program: 'delta' }).success).toBe(false)
+    expect(awardSearchSchema.parse(route)).toMatchObject({ airline: null, program: null })
+  })
+
+  it('names airlines and programs for the results', () => {
+    expect(airlineCodes('UA, NH')).toEqual(['UA', 'NH'])
+    expect(airlineNames('UA, NH')).toBe('United, ANA')
+    expect(airlineNames('XX')).toBe('XX')
+    expect(airlineNames('Multiple airlines')).toBe('Multiple airlines')
+    expect(programUnit('aeroplan')).toBe('Aeroplan points')
+    expect(programUnit('somethingelse')).toBe('miles')
   })
 })

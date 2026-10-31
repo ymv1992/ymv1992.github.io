@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { AppDb } from '../db/client'
 import { dataSources, searchHistory } from '../db/schema'
+import { airlineCodes, AWARD_AIRLINE_CODES, AWARD_PROGRAM_IDS } from '../domain/airlines'
 import { CABINS, type Cabin } from '../domain/constants'
 import { withinQuota } from '../engine/budget'
 import { DISCOVERY_DESTINATIONS, dreamAirports, pickCheapest } from '../jobs/discovery'
@@ -23,13 +24,18 @@ export const awardSearchSchema = z
     cabin: z.enum(CABINS),
     startDate: isoDate,
     endDate: isoDate,
+    /** Only awards flown (at least partly) by this airline; null = any. */
+    airline: z.enum(AWARD_AIRLINE_CODES).nullable().default(null),
+    /** Only awards bookable with this Chase partner program; null = any. */
+    program: z.enum(AWARD_PROGRAM_IDS).nullable().default(null),
   })
   .refine((v) => v.endDate >= v.startDate, {
     message: 'The end date must be on or after the start date',
     path: ['endDate'],
   })
 
-export type AwardSearchInput = z.infer<typeof awardSearchSchema>
+/** Airline and program filters are optional for callers (they default to "any"). */
+export type AwardSearchInput = z.input<typeof awardSearchSchema>
 
 export interface AwardSearchResultRow {
   dealId: string
@@ -154,7 +160,10 @@ export async function runAwardSearch(db: AppDb, userId: string, apiKey: string, 
     truncated ||= res.truncated
     for (const item of res.items) {
       const m = itemToDealColumns(item, input.cabin as Cabin)
-      if (m && m.originAirport && origins.includes(m.originAirport) && r.destinations.includes(m.destAirport ?? '')) mapped.push(m)
+      if (!m || !m.originAirport || !origins.includes(m.originAirport) || !r.destinations.includes(m.destAirport ?? '')) continue
+      if (input.program && m.programId !== input.program) continue
+      if (input.airline && !airlineCodes(m.flight?.operatingAirline).includes(input.airline)) continue
+      mapped.push(m)
     }
   }
   const kept = anywhere ? pickCheapest(mapped) : mapped
