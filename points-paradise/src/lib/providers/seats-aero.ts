@@ -11,7 +11,7 @@
  * rather than trusted.
  */
 import { z } from 'zod'
-import type { Cabin } from '../domain/constants'
+import { CABINS, type Cabin } from '../domain/constants'
 import { dealDedupeKey, type DealColumns } from '../data/deal-input'
 import { SEATS_AERO_PROGRAMS } from '../data/watchlists'
 import { getAirport } from '../geo/airports'
@@ -61,6 +61,11 @@ const itemSchema = z.object({
   WDirect: bool,
   JDirect: bool,
   FDirect: bool,
+  // Seats left at this price. Not every program reports it; 0 means "not reported".
+  YRemainingSeats: num.optional(),
+  WRemainingSeats: num.optional(),
+  JRemainingSeats: num.optional(),
+  FRemainingSeats: num.optional(),
   UpdatedAt: z.string().nullish(),
 })
 
@@ -79,9 +84,17 @@ const API_CABIN: Record<Cabin, string> = { economy: 'economy', premium_economy: 
 export interface CachedSearchParams {
   origins: string[]
   destinations: string[]
-  cabin: Cabin
+  /** null asks for every cabin at once. */
+  cabin: Cabin | null
   startDate: string
   endDate: string
+}
+
+/** An HTTP error from seats.aero, keeping the status so callers can react to it. */
+export class SeatsAeroHttpError extends Error {
+  constructor(public status: number) {
+    super(`seats.aero responded ${status}`)
+  }
 }
 
 export interface CachedSearchResult {
@@ -108,21 +121,20 @@ export function searchDiagnostics(res: CachedSearchResult): Record<string, unkno
 
 const PAGE_SIZE = 500
 
-/** One cached search (single request, up to 500 results). Throws on HTTP errors. */
-export async function cachedSearch(apiKey: string, p: CachedSearchParams, fetchImpl: typeof fetch = fetch): Promise<CachedSearchResult> {
+async function searchOnce(apiKey: string, p: CachedSearchParams, cabin: Cabin | null, fetchImpl: typeof fetch): Promise<CachedSearchResult> {
   const qs = new URLSearchParams({
     origin_airport: p.origins.join(','),
     destination_airport: p.destinations.join(','),
     start_date: p.startDate,
     end_date: p.endDate,
-    cabin: API_CABIN[p.cabin],
+    ...(cabin ? { cabin: API_CABIN[cabin] } : {}),
     take: String(PAGE_SIZE),
   })
   const res = await fetchImpl(`${SEATS_AERO_BASE}/search?${qs}`, {
     headers: { 'Partner-Authorization': apiKey, accept: 'application/json' },
     signal: AbortSignal.timeout(30_000),
   })
-  if (!res.ok) throw new Error(`seats.aero responded ${res.status}`)
+  if (!res.ok) throw new SeatsAeroHttpError(res.status)
   const body = responseSchema.parse(await res.json())
   const items: SeatsAeroItem[] = []
   let skipped = 0
@@ -141,6 +153,39 @@ export async function cachedSearch(apiKey: string, p: CachedSearchParams, fetchI
     }
   }
   return { items, requests: 1, skippedMalformed: skipped, truncated: body.hasMore === true || body.data.length >= PAGE_SIZE, firstIssue, sample }
+}
+
+/**
+ * One cached search (up to 500 results). With no cabin it asks for every
+ * cabin in one request; if seats.aero insists on a cabin (400/422), it asks
+ * once per cabin instead and merges the results. Throws on other HTTP errors.
+ */
+export async function cachedSearch(apiKey: string, p: CachedSearchParams, fetchImpl: typeof fetch = fetch): Promise<CachedSearchResult> {
+  if (p.cabin) return searchOnce(apiKey, p, p.cabin, fetchImpl)
+  try {
+    return await searchOnce(apiKey, p, null, fetchImpl)
+  } catch (err) {
+    if (!(err instanceof SeatsAeroHttpError) || (err.status !== 400 && err.status !== 422)) throw err
+  }
+  const parts = await Promise.all(CABINS.map((c) => searchOnce(apiKey, p, c, fetchImpl)))
+  const byId = new Map<string, SeatsAeroItem>()
+  for (const part of parts) for (const item of part.items) byId.set(item.ID, { ...byId.get(item.ID), ...item })
+  const issue = parts.find((x) => x.firstIssue)
+  return {
+    items: [...byId.values()],
+    // The refused all-cabin request counts too.
+    requests: 1 + parts.length,
+    skippedMalformed: parts.reduce((n, x) => n + x.skippedMalformed, 0),
+    truncated: parts.some((x) => x.truncated),
+    firstIssue: issue?.firstIssue,
+    sample: issue?.sample,
+  }
+}
+
+/** Seats left at this price, or null when the program does not report it. */
+export function remainingSeats(item: SeatsAeroItem, cabin: Cabin): number | null {
+  const n = item[`${CABIN_CODE[cabin]}RemainingSeats`]
+  return n != null && n > 0 ? Math.round(n) : null
 }
 
 const PROGRAM_BY_SOURCE = Object.fromEntries(Object.entries(SEATS_AERO_PROGRAMS).map(([program, source]) => [source, program]))

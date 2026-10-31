@@ -283,8 +283,8 @@ SESSION_SECRET=any-32-character-placeholder-value npm run build
 
 | Test file | What it covers |
 |---|---|
-| `tests/engine/*` | CPP and practical value, comparability refusals, transfer math (ratios, card overrides, bonuses, increments, minimums, rounding), ranking and evidence tiers, deadlines and reminders (including DST), staleness, personalization, positioning, budgets, priority queue, alert decisions, trip building, trip-request parsing. |
-| `tests/db/*` | Award search (Anywhere and single route, partial failures, quota, validation). Runs against in-memory PGlite. Reference seeds, account bootstrap, manual-deal validation and dedupe, price history, archiving, saved snapshots, collection ownership, undo, notification dedupe, demo labelling and removal. |
+| `tests/engine/*` | CPP and practical value, comparability refusals, transfer math (ratios, card overrides, bonuses, increments, minimums, rounding), ranking and evidence tiers, deadlines and reminders (including DST), staleness, personalization, positioning, budgets, priority queue, alert decisions, trip building, trip-request parsing, cabin comparison notes, seat labels, bonus notes and calendar cabin links. |
+| `tests/db/*` | Award search (Anywhere and single route, all-cabin comparison with per-cabin fallback, round trips, seat counts, transfer bonus flags, partial failures, quota, validation). Runs against in-memory PGlite. Reference seeds, account bootstrap, manual-deal validation and dedupe, price history, archiving, saved snapshots, collection ownership, undo, notification dedupe, demo labelling and removal. |
 | `tests/jobs/*` | Reminders sent once, seats.aero watch checks, quota exhaustion, a missing key reported rather than crashing, RSS ingest, automatic discovery (search parameters, cheapest-date selection, vanished seats moved to History, daily cap and quota reserve, on/off switch, one dream alert per city). |
 | `tests/providers/*` | Adapters run against recorded response fixtures. |
 
@@ -359,6 +359,32 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
   Virgin Atlantic Flying Club). Results show airline names and which
   program's miles the price is in. Filtering happens after the search, so it
   uses no extra lookups.
+- **Compare cabins side by side.** Choose **Cabin: All cabins** (the
+  default) to see Economy, Premium economy, Business and First next to each
+  other for every date, or for every city and month when searching
+  "Anywhere". Each cabin shows its cheapest program on that date. The lowest
+  price in each cabin is shaded green. A note under each date says how much
+  more a better cabin costs, such as "Business is only 7,500 more points
+  than Economy". Comparisons use Chase points. All cabins come back in the
+  same seats.aero lookup. If seats.aero ever insists on one cabin per
+  request, the app asks once per cabin and merges the answers (5 lookups).
+- **Round trips.** Pick **Round trip**, enter a "To" airport and the dates
+  you could fly back. The app searches the way there and the way back (2
+  lookups). It shows the cheapest round trip in each cabin, with the return
+  on or after the way out. Each round trip is booked as two one-way awards,
+  which can use different programs. Both directions are listed underneath.
+- **Seats for more than one person.** Choose **Seats: 2 people** (up to 4).
+  Flights that seats.aero says have fewer seats left at that price are left
+  out, and the message says how many were left out. Some programs don't
+  report seat counts. Those flights stay, labelled "seats not reported —
+  check before transferring". Points are per person.
+- **Transfer bonus flags.** When a Chase transfer bonus you've entered
+  under **Transfers → Add a transfer bonus you found** is running, results
+  for that program show a **+30% bonus** tag. Its Chase points include the
+  bonus, with the number without it. A note says when the bonus ends and
+  whether you confirmed it in your Chase account. The app does not read
+  chase.com, so bonuses appear only once you add them. Targeted offers are
+  never applied automatically.
 - **Hotel search.** The Award Calendar's **Hotels** tab searches one place
   (such as "Maui, Hawaii") through rooms.aero. You choose check-in dates,
   1–5 nights and the programs (Hyatt, Marriott, IHG, Wyndham). Each search
@@ -366,7 +392,10 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
   value, best value first.
 - **Award Calendar.** Heatmap, price-history chart, seasonal table and
   predictions marked with their evidence tier. Predictions are withheld when
-  there is too little data.
+  there is too little data. Pick a route, then a **cabin tab** (Economy,
+  Premium economy, Business or First). Each tab shows how many dates it has
+  and its lowest price. The heatmap, history and seasons follow the tab you
+  choose.
 - **My Trips (itinerary builder).** Under **Plan → My Trips**:
   - **Trips.** A trip has dates, or is a "someday" trip with just a number
     of days.
