@@ -9,7 +9,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const { token } = await params
   const data = await getSharedTrip(await getDb(), token)
   if (!data) return Response.json({ error: 'This link is no longer shared' }, { status: 404 })
-  const pdf = await buildTripPdf(data.trip, data.items)
+  // Confirmation numbers stay out of shared copies.
+  const pdf = await buildTripPdf(data.trip, data.items, new Date(), { hideConfirmation: true })
   return new Response(pdf as BodyInit, {
     headers: {
       'Content-Type': 'application/pdf',

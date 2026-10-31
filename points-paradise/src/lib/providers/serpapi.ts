@@ -14,8 +14,12 @@ const CLASS_RANK: Record<string, number> = { economy: 0, 'premium economy': 1, b
 /** SerpApi reports a search that found nothing as an error; it is a normal "no fare" answer. */
 const NO_RESULTS = /(hasn't|has not) returned any results/i
 
+const airportTimeSchema = z.object({ id: z.string().optional(), name: z.string().optional(), time: z.string().optional() }).passthrough()
+
 const segmentSchema = z
   .object({
+    departure_airport: airportTimeSchema.optional(),
+    arrival_airport: airportTimeSchema.optional(),
     airline: z.string().optional(),
     flight_number: z.string().optional(),
     airplane: z.string().optional(),
@@ -131,6 +135,76 @@ export async function searchFlightPrice(
     seatType: seat,
     cashProduct: { cabin: p.cabin, seatType: seat === 'unknown' ? null : seat, origin: p.from, destination: p.to, date: p.date, stops: best.flights.length - 1, refundable: false, mixedCabin },
   }
+}
+
+export interface ScheduledFlight {
+  flightNumber: string
+  airline: string | null
+  departTime: string
+  arriveTime: string
+  arriveDayOffset: number
+  durationMinutes: number | null
+  aircraft: string | null
+}
+
+const flightKey = (v: string) => v.toUpperCase().replace(/\s+/g, '').replace(/^([A-Z0-9]{2})0+/, '$1')
+
+/** "2026-11-05 08:05" → date and time. */
+function splitTime(v: string | undefined): { date: string; time: string } | null {
+  const m = v?.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{1,2}):(\d{2})/)
+  return m ? { date: m[1]!, time: `${m[2]!.padStart(2, '0')}:${m[3]}` } : null
+}
+
+/**
+ * Finds one flight's schedule and aircraft in Google Flights: searches the
+ * route on that date and picks the flight with that number between those
+ * airports. Null when Google Flights doesn't list it (wrong number, airports
+ * or date, or a flight that has already left).
+ */
+export async function findScheduledFlight(
+  apiKey: string,
+  p: { from: string; to: string; date: string; flightNumber: string },
+  fetchImpl: typeof fetch = fetch,
+): Promise<ScheduledFlight | null> {
+  const qs = new URLSearchParams({
+    engine: 'google_flights',
+    departure_id: p.from,
+    arrival_id: p.to,
+    outbound_date: p.date,
+    type: '2',
+    adults: '1',
+    currency: 'USD',
+    hl: 'en',
+    gl: 'us',
+    api_key: apiKey,
+  })
+  const res = await fetchImpl(`${BASE}?${qs}`, { signal: AbortSignal.timeout(45_000) })
+  if (!res.ok) throw new Error(`SerpApi responded ${res.status}`)
+  const body = flightsResponseSchema.parse(await res.json())
+  if (body.error) {
+    if (NO_RESULTS.test(body.error)) return null
+    throw new Error(`SerpApi: ${body.error}`)
+  }
+  const want = flightKey(p.flightNumber)
+  for (const itinerary of [...(body.best_flights ?? []), ...(body.other_flights ?? [])]) {
+    for (const f of itinerary.flights) {
+      if (!f.flight_number || flightKey(f.flight_number) !== want) continue
+      if (f.departure_airport?.id !== p.from || f.arrival_airport?.id !== p.to) continue
+      const dep = splitTime(f.departure_airport?.time)
+      const arr = splitTime(f.arrival_airport?.time)
+      if (!dep || !arr || dep.date !== p.date) continue
+      return {
+        flightNumber: f.flight_number,
+        airline: f.airline ?? null,
+        departTime: dep.time,
+        arriveTime: arr.time,
+        arriveDayOffset: Math.max(0, Math.round((Date.parse(`${arr.date}T00:00:00Z`) - Date.parse(`${dep.date}T00:00:00Z`)) / 86_400_000)),
+        durationMinutes: f.duration ?? null,
+        aircraft: f.airplane?.trim() || null,
+      }
+    }
+  }
+  return null
 }
 
 const hotelsResponseSchema = z

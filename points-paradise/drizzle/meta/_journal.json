@@ -64,6 +64,13 @@
       "when": 1793204366624,
       "tag": "0008_retry_place_lookups",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793478122458,
+      "tag": "0009_trip_bookings",
+      "breakpoints": true
     }
   ]
 }
