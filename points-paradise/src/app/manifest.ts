@@ -9,6 +9,8 @@ export default function manifest(): MetadataRoute.Manifest {
     display: 'standalone',
     background_color: '#0b1422',
     theme_color: '#0b1422',
+    // On Android, an installed app shows up in the share menu: shared TikTok links open the Ideas page.
+    share_target: { action: '/ideas', method: 'get', params: { title: 'title', text: 'text', url: 'url' } },
     icons: [
       { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml' },
       { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
