@@ -437,6 +437,46 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
       shown next to yours.
     - Changing the flight number, airports or day drops the old lookup.
     - No passwords or card numbers are stored.
+  - **Map by city.** Every place with a pin also gets the town or city it's
+    in, from OpenStreetMap's free reverse lookup. The lookup is cached by
+    position for 90 days and counts against the same daily cap.
+    - The trip page shows one map per city, as tabs (for example "Lisbon ·
+      Days 1–5" and "Porto · Days 6–11").
+    - Pins are numbered by trip day, and ★ marks ideas.
+    - Under the map, the places are listed in order, with Google Maps
+      directions from the stop before on the same day.
+    - Map tiles are OpenStreetMap's.
+    - **Find maps & photos** also fills in cities for places added before
+      this.
+  - **Which city each day is in.**
+    - A stay covers its nights.
+    - Otherwise it's the city with most of the day's plans.
+    - Otherwise it's where that day's flight lands (counted as a city
+      already on the trip when it's within 60 km).
+    - Otherwise it's the city of the day before.
+  - **Weather.** Each upcoming day shows the weather in that day's city,
+    from Open-Meteo (free, no key).
+    - Days within 16 days get the real forecast: high and low in °F, and the
+      chance of rain.
+    - Later days show what the weather was on the same dates over the last
+      3 years, marked **Typical**. Their rain figure is how often it rained
+      on that date.
+    - Forecasts are cached for 3 hours and past years for 30 days.
+    - If a city's weather can't be loaded, the page says so. It never shows
+      a guess.
+  - **Packing list.** **Suggest a packing list** builds one from the trip,
+    and each item says why it's there.
+    - The trip's length sets how many clothes, with a laundry stop for
+      trips over 7 days.
+    - The weather adds items, such as "Lows around 44°F in Porto" or "65%
+      chance of rain in Lisbon on Day 2".
+    - Your plans add items: beach and snorkeling, hikes, temples and
+      churches, and nice dinners.
+    - Flights add boarding passes, the liquids rule and headphones.
+    - Trips abroad add a passport, power adapter and eSIM.
+    - A trip with a local currency adds some local cash.
+    - You can tick things off, add your own items, or remove suggestions.
+      Removed suggestions aren't suggested again.
   - **Maps and photos.** Paste a Google link (Google Maps links, short
     `maps.app.goo.gl` links, and `share.google` / `g.co` links shared from
     Google Search or the Google app), or fill in a place, and the item shows a map

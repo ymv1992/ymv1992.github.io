@@ -306,7 +306,7 @@ export async function updateTripItem(db: AppDb, userId: string, itemId: string, 
       ...input,
       booking,
       ...(moved ? { position: await nextPosition(db, found.trip.id, input.day) } : {}),
-      ...(placeChanged ? { lat: null, lng: null, mapSpan: null, photo: null, mediaCheckedAt: null } : {}),
+      ...(placeChanged ? { lat: null, lng: null, mapSpan: null, photo: null, mediaCheckedAt: null, city: null, countryCode: null, cityCheckedAt: null } : {}),
       updatedAt: now,
     })
     .where(eq(tripItems.id, itemId))

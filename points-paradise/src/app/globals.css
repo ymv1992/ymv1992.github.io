@@ -124,6 +124,33 @@ body {
 /* Form controls share one quiet style. */
 /* In the components layer so utilities (w-28, text-xs…) can still size a control. */
 @layer components {
+  /* Numbered pins on the trip map (the number is the trip day). */
+  .trip-pin {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 9999px;
+    background: var(--primary);
+    color: var(--primary-ink);
+    font-size: 12px;
+    font-weight: 700;
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
+  }
+  .trip-pin-idea {
+    background: var(--gold);
+  }
+  .trip-pin-sm {
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+    border-width: 1px;
+    flex-shrink: 0;
+    align-self: center;
+  }
+
   .field {
     width: 100%;
     border: 1px solid var(--line);

@@ -1,13 +1,13 @@
 /** Maps and photos for trip items: from Google Maps links or place names, cached, and refreshed when the place changes (TEST FIXTURES). */
 import { beforeAll, describe, expect, it } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import type { AppDb } from '@/lib/db/client'
 import { searchJobs, tripItems } from '@/lib/db/schema'
 import { ensureOwnerAccount } from '@/lib/data/account'
 import { enrichTripItem, itemsNeedingMedia } from '@/lib/data/place-media'
 import { addTripItem, createTrip, tripInputSchema, updateTripItem, type TripItemInput } from '@/lib/data/trips'
 import { NOW } from '../fixtures'
-import { commonsOk, json, router } from '../place-fixtures'
+import { commonsOk, json, reverseOk, router } from '../place-fixtures'
 import { createTestDb } from '../test-db'
 
 let db: AppDb
@@ -30,14 +30,22 @@ const row = async (id: string) => (await db.select().from(tripItems).where(eq(tr
 describe('trip item maps and photos', () => {
   it('come from a Google Maps link without searching, and the link names the place', async () => {
     const calls: URL[] = []
-    const f = router({ 'en.wikipedia.org': molokiniSearch, 'commons.wikimedia.org': () => commonsOk('Molokini_crater.jpg') }, calls)
+    const f = router(
+      {
+        'en.wikipedia.org': molokiniSearch,
+        'commons.wikimedia.org': () => commonsOk('Molokini_crater.jpg'),
+        'nominatim.openstreetmap.org': (u) => (u.pathname === '/reverse' ? reverseOk('Kihei') : null),
+      },
+      calls,
+    )
     const r = await addTripItem(db, userId, tripId, item('Snorkel trip', { url: 'https://www.google.com/maps/place/Molokini/@20.63,-156.49,14z/data=!3d20.6339!4d-156.4964' }))
     if (!r.ok) throw new Error(r.error)
     expect(await enrichTripItem(db, userId, r.id, deps(f))).toEqual({ map: true, photo: true })
     const saved = await row(r.id)
-    expect(saved).toMatchObject({ place: 'Molokini', lat: 20.6339, lng: -156.4964, photo: { credit: 'Forest & Kim Starr', license: 'CC BY 3.0' } })
+    expect(saved).toMatchObject({ place: 'Molokini', lat: 20.6339, lng: -156.4964, photo: { credit: 'Forest & Kim Starr', license: 'CC BY 3.0' }, city: 'Kihei', countryCode: 'US' })
     expect(saved.mediaCheckedAt?.toISOString()).toBe(NOW.toISOString())
-    expect(calls.some((c) => c.hostname === 'nominatim.openstreetmap.org')).toBe(false)
+    // No place search: the pin comes from the link. Only the town it's in is asked for.
+    expect(calls.filter((c) => c.hostname === 'nominatim.openstreetmap.org').map((c) => c.pathname)).toEqual(['/reverse'])
     const [job] = await db.select().from(searchJobs).where(eq(searchJobs.provider, 'wikimedia'))
     expect(job).toMatchObject({ jobType: 'place_photo', status: 'succeeded' })
   })
@@ -47,6 +55,7 @@ describe('trip item maps and photos', () => {
     const f = router(
       {
         'nominatim.openstreetmap.org': (u) => {
+          if (u.pathname === '/reverse') return reverseOk('Kula')
           expect(u.searchParams.get('q')).toBe('Haleakala National Park, Maui, Hawaii')
           return json([{ lat: '20.72', lon: '-156.17', name: 'Haleakalā National Park', boundingbox: ['20.6', '20.8', '-156.3', '-156.0'], extratags: { wikidata: 'Q1069935' } }])
         },
@@ -94,7 +103,7 @@ describe('trip item maps and photos', () => {
     expect(await enrichTripItem(db, userId, r.id, deps(down))).toEqual({ map: false, photo: false })
     expect(await row(r.id)).toMatchObject({ lat: null, photo: null })
     expect((await row(r.id)).mediaCheckedAt).not.toBeNull()
-    const [failed] = await db.select().from(searchJobs).where(eq(searchJobs.status, 'failed'))
+    const [failed] = await db.select().from(searchJobs).where(and(eq(searchJobs.status, 'failed'), eq(searchJobs.jobType, 'place_lookup')))
     expect(failed).toMatchObject({ provider: 'nominatim', error: 'Nominatim responded 503' })
   })
 
@@ -103,6 +112,7 @@ describe('trip item maps and photos', () => {
     const f = router({
       'share.google': () => new Response(null, { status: 302, headers: { location: 'https://www.google.com/search?q=Capela+das+Almas&kgmid=/g/11b6' } }),
       'nominatim.openstreetmap.org': (u) => {
+        if (u.pathname === '/reverse') return reverseOk('Porto', 'pt')
         searches.push(u.searchParams.get('q')!)
         return json([{ lat: '41.1492', lon: '-8.6062', name: 'Capela das Almas', boundingbox: ['41.1491', '41.1493', '-8.6063', '-8.6061'], extratags: { wikidata: 'Q2939413' } }])
       },
@@ -113,13 +123,14 @@ describe('trip item maps and photos', () => {
     if (!r.ok) throw new Error(r.error)
     expect(await enrichTripItem(db, userId, r.id, deps(f))).toEqual({ map: true, photo: true })
     expect(searches).toEqual(['Capela das Almas, Maui, Hawaii'])
-    expect(await row(r.id)).toMatchObject({ place: 'Capela das Almas', lat: 41.1492, photo: { pageUrl: 'https://commons.wikimedia.org/wiki/File:Capela_das_Almas.jpg' } })
+    expect(await row(r.id)).toMatchObject({ place: 'Capela das Almas', lat: 41.1492, photo: { pageUrl: 'https://commons.wikimedia.org/wiki/File:Capela_das_Almas.jpg' }, city: 'Porto', countryCode: 'PT' })
   })
 
   it('search the title near the destination when there is no place or readable link, and name what was found', async () => {
     const searches: string[] = []
     const f = router({
       'nominatim.openstreetmap.org': (u) => {
+        if (u.pathname === '/reverse') return reverseOk('Porto', 'pt')
         const q = u.searchParams.get('q')!
         searches.push(q)
         return json(q === 'Torre dos Clérigos, Maui, Hawaii' ? [{ lat: '41.1457', lon: '-8.6146', name: 'Torre dos Clérigos' }] : [])

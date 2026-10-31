@@ -30,3 +30,6 @@ export const commonsOk = (file: string, extra: Record<string, unknown> = {}) =>
       ],
     },
   })
+
+/** OpenStreetMap's answer to "which town is this point in?" */
+export const reverseOk = (city: string, countryCode = 'us') => json({ lat: '0', lon: '0', address: { city, country_code: countryCode } })
