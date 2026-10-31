@@ -353,7 +353,12 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
   for chosen dates and cabin. You get the cheapest date per city and month,
   listed cheapest first. That's about 10 seats.aero lookups per search, so
   no extra cost. Each result shows its Chase points and a **Get cash price**
-  button that adds its value (¢/pt).
+  button that adds its value (¢/pt). Optional filters narrow results to one
+  **airline** (who flies you, including connections that use it) and one
+  **program** to book with (United MileagePlus, Aeroplan, Flying Blue or
+  Virgin Atlantic Flying Club). Results show airline names and which
+  program's miles the price is in. Filtering happens after the search, so it
+  uses no extra lookups.
 - **Hotel search.** The Award Calendar's **Hotels** tab searches one place
   (such as "Maui, Hawaii") through rooms.aero. You choose check-in dates,
   1–5 nights and the programs (Hyatt, Marriott, IHG, Wyndham). Each search

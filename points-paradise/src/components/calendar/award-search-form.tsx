@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useActionState } from 'react'
 import { searchAwardsAction, type SearchState } from '@/app/actions/search-actions'
+import { airlineNames, AWARD_AIRLINES, AWARD_PROGRAMS, programUnit } from '@/lib/domain/airlines'
 import { CABINS, CABIN_LABELS } from '@/lib/domain/constants'
 import { PriceButton } from '../deal/price-button'
 import { Button } from '../ui'
@@ -38,7 +39,7 @@ export function AwardSearchForm({
   canPrice: boolean
 }) {
   const [state, action, pending] = useActionState<SearchState, FormData>(searchAwardsAction, { error: null })
-  const v = state.values ?? { ...defaults, includeHomeAirports: true }
+  const v = state.values ?? { ...defaults, includeHomeAirports: true, airline: '', program: '' }
   const others = homeAirports.filter((a) => a !== v.origin)
   return (
     <div>
@@ -85,6 +86,33 @@ export function AwardSearchForm({
           </label>
           <input id="s-e" name="endDate" type="date" defaultValue={v.endDate} className="field" required />
         </div>
+        {/* Before the button on phones; the second row on wider screens. */}
+        <div className="sm:order-1 sm:col-span-3">
+          <label htmlFor="s-a" className="label">
+            Airline <span className="font-normal text-muted">(who you fly)</span>
+          </label>
+          <select id="s-a" name="airline" defaultValue={v.airline} className="field">
+            <option value="">Any airline</option>
+            {AWARD_AIRLINES.map(([code, name]) => (
+              <option key={code} value={code}>
+                {name} ({code})
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="sm:order-1 sm:col-span-3">
+          <label htmlFor="s-p" className="label">
+            Book with <span className="font-normal text-muted">(points program)</span>
+          </label>
+          <select id="s-p" name="program" defaultValue={v.program} className="field">
+            <option value="">Any Chase partner</option>
+            {AWARD_PROGRAMS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="self-end">
           <Button type="submit" disabled={pending} className="w-full">
             {pending ? 'Searching…' : 'Search awards'}
@@ -115,8 +143,10 @@ export function AwardSearchForm({
               </Link>
               <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="tabular text-sm">
-                  <span className="font-semibold">{r.points.toLocaleString('en-US')} miles</span>
-                  {r.taxesUsd != null ? ` + $${Math.round(r.taxesUsd)}` : ''} <span className="text-muted">· {r.airline}</span>
+                  <span className="font-semibold">
+                    {r.points.toLocaleString('en-US')} {programUnit(r.programId)}
+                  </span>
+                  {r.taxesUsd != null ? ` + $${Math.round(r.taxesUsd)}` : ''} <span className="text-muted">· {airlineNames(r.airline)}</span>
                 </span>
                 <PriceButton dealId={r.dealId} cpp={r.cpp} cashUsd={r.cashUsd} tried={r.cashLookupTried} canPrice={canPrice} />
               </span>
