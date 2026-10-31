@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getDb } from '@/lib/db/client'
-import { awardSearchSchema, runAwardSearch, type AwardSearchResultRow } from '@/lib/data/award-search'
+import { awardSearchSchema, runAwardSearch, type AwardSearchOutcome } from '@/lib/data/award-search'
 import { airlineName, AWARD_PROGRAMS } from '@/lib/domain/airlines'
 import { z } from 'zod'
 import { loadAccount } from '@/lib/data/account'
@@ -16,9 +16,14 @@ import { requireUserId } from '@/lib/server/session'
 export interface SearchValues {
   origin: string
   destination: string
+  /** A cabin, or 'all' to compare every cabin. */
   cabin: string
   startDate: string
   endDate: string
+  tripType: 'one_way' | 'round_trip'
+  returnStart: string
+  returnEnd: string
+  seats: string
   includeHomeAirports: boolean
   /** Airline code, or '' for any. */
   airline: string
@@ -29,11 +34,13 @@ export interface SearchValues {
 export interface SearchState {
   error: string | null
   ok?: string
-  results?: AwardSearchResultRow[]
+  outcome?: Extract<AwardSearchOutcome, { ok: true }>
   /** What was submitted, so the form shows it again (React resets forms after an action). */
   values?: SearchValues
   attempt?: number
 }
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : word.endsWith('h') ? 'es' : 's'}`
 
 /** Owner-requested award search, within the provider's daily quota. An empty "To" searches anywhere. */
 export async function searchAwardsAction(prev: SearchState, fd: FormData): Promise<SearchState> {
@@ -44,6 +51,10 @@ export async function searchAwardsAction(prev: SearchState, fd: FormData): Promi
     cabin: String(fd.get('cabin') ?? ''),
     startDate: String(fd.get('startDate') ?? ''),
     endDate: String(fd.get('endDate') ?? ''),
+    tripType: fd.get('tripType') === 'round_trip' ? 'round_trip' : 'one_way',
+    returnStart: String(fd.get('returnStart') ?? ''),
+    returnEnd: String(fd.get('returnEnd') ?? ''),
+    seats: String(fd.get('seats') ?? '1'),
     includeHomeAirports: fd.get('includeHomeAirports') === 'on',
     airline: String(fd.get('airline') ?? '').trim().toUpperCase(),
     program: String(fd.get('program') ?? '').trim(),
@@ -51,32 +62,44 @@ export async function searchAwardsAction(prev: SearchState, fd: FormData): Promi
   const echo = { values, attempt: (prev.attempt ?? 0) + 1 }
   const key = config.seatsAeroKey()
   if (!key) return { ...echo, error: 'Award search needs a seats.aero Pro API key (SEATS_AERO_API_KEY). Until then, add deals manually.' }
+  const roundTrip = values.tripType === 'round_trip'
   const parsed = awardSearchSchema.safeParse({
     ...values,
     destination: values.destination === '' || values.destination === 'ANY' ? null : values.destination,
+    returnStart: roundTrip ? values.returnStart || null : null,
+    returnEnd: roundTrip ? values.returnEnd || null : null,
+    seats: Number(values.seats) || 1,
     airline: values.airline || null,
     program: values.program || null,
   })
   if (!parsed.success) {
     const i = parsed.error.issues[0]
-    return { ...echo, error: i?.path[0] === 'endDate' ? i.message : 'Enter a 3-letter "From" airport, a "To" airport or leave it empty for Anywhere, a cabin and dates.' }
+    const field = String(i?.path[0] ?? '')
+    return { ...echo, error: ['endDate', 'destination', 'returnStart', 'returnEnd'].includes(field) ? i!.message : 'Enter a 3-letter "From" airport, a "To" airport or leave it empty for Anywhere, a cabin and dates.' }
   }
-  const out = await runAwardSearch(await getDb(), userId, key, parsed.data)
+  const s = parsed.data
+  const out = await runAwardSearch(await getDb(), userId, key, s)
   if (!out.ok) return { ...echo, error: out.error }
   revalidatePath('/', 'layout')
-  const program = AWARD_PROGRAMS.find((p) => p.id === parsed.data.program)
-  const filters = [parsed.data.airline ? `on ${airlineName(parsed.data.airline)}` : null, program ? `with ${program.label}` : null].filter(Boolean).join(' ')
-  const where = `${out.anywhere ? 'across all destinations' : `to ${parsed.data.destination}`}${filters ? ` ${filters}` : ''}`
+  const program = AWARD_PROGRAMS.find((p) => p.id === s.program)
+  const filters = [s.airline ? `on ${airlineName(s.airline)}` : null, program ? `with ${program.label}` : null].filter(Boolean).join(' ')
+  const where = `${out.anywhere ? 'across all destinations' : `to ${s.destination}`}${filters ? ` ${filters}` : ''}`
+  const found = out.allCabins ? `${out.anywhere ? `${out.total} city-and-month combination${out.total === 1 ? '' : 's'}` : plural(out.total, 'date')} with open seats` : plural(out.total, 'award option')
+  const backFound = out.returnLeg ? (out.allCabins ? plural(out.returnLeg.total, 'date') : plural(out.returnLeg.total, 'option')) : null
+  const nothing = out.total === 0 && (!out.returnLeg || out.returnLeg.total === 0)
   const parts = [
-    out.total === 0
+    nothing
       ? `No open award seats found ${where} for those dates.${filters ? ' Try "Any airline" or "Any program" to see everything.' : ''}`
-      : `${out.total} award option${out.total === 1 ? '' : 's'} found ${where}${out.anywhere ? ' (cheapest date per city and month)' : ''}, cheapest first.`,
+      : roundTrip
+        ? `Going ${where}: ${found}. Coming back: ${backFound}.`
+        : `${found} ${where}${out.anywhere ? ' (cheapest date per city and month)' : ''}, cheapest first.`,
+    roundTrip && !nothing && out.roundTrips.length === 0 ? 'No cabin has seats both ways with the return on or after the way out — try wider dates.' : null,
+    out.hiddenForSeats ? `${plural(out.hiddenForSeats, 'option')} with fewer than ${s.seats} seats left ${out.hiddenForSeats === 1 ? 'was' : 'were'} left out.` : null,
     out.created ? `${out.created} new in Discover.` : null,
     out.truncated ? 'Some searches hit the result limit — try a shorter date range for more.' : null,
-    out.failed ? `${out.failed} of ${out.requests} searches failed; see Settings → Usage.` : null,
-    out.total && out.results.some((r) => r.cpp == null) ? 'Tap "Get cash price" on a flight to see its value (¢/pt).' : null,
+    out.failed ? `${plural(out.failed, 'search')} failed; see Settings → Usage.` : null,
   ].filter(Boolean)
-  return { ...echo, error: null, ok: parts.join(' '), results: out.results }
+  return { ...echo, error: null, ok: parts.join(' '), outcome: out }
 }
 
 export interface HotelSearchState {

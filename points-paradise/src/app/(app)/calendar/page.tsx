@@ -1,7 +1,9 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { inArray } from 'drizzle-orm'
 import { dealPriceHistory } from '@/lib/db/schema'
-import { CABIN_LABELS, type Cabin } from '@/lib/domain/constants'
+import { CABINS, CABIN_LABELS, type Cabin } from '@/lib/domain/constants'
+import { parseCalendarSelection } from '@/lib/view/calendar-selection'
 import { predict, type Observation } from '@/lib/engine/history'
 import { median } from '@/lib/engine/valuation'
 import { points } from '@/lib/format'
@@ -25,32 +27,47 @@ function addMonths(ym: string, n: number): string {
   return d.toISOString().slice(0, 7)
 }
 
-export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ key?: string }> }) {
+export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ key?: string; cabin?: string }> }) {
   const sp = await searchParams
   const data = await getEvaluationWithArchive()
   const now = data.ctx.now
   const tz = data.account.settings.timezone
+  const wanted = parseCalendarSelection(sp)
 
-  // Selectable series: flight routes by cabin, and hotel properties.
+  // Selectable series: flight routes (every cabin; tabs pick one), and hotel properties.
   const series = new Map<string, { label: string; items: typeof data.items; demo: boolean }>()
   for (const e of data.items) {
     const d = e.deal
-    const key =
-      d.kind === 'flight' && d.flight && d.originAirport && d.destination.airport
-        ? `f:${d.originAirport}:${d.destination.airport}:${d.flight.cabin}`
-        : d.hotel
-          ? `h:${d.hotel.property}`
-          : null
+    const key = d.kind === 'flight' && d.flight && d.originAirport && d.destination.airport ? `f:${d.originAirport}:${d.destination.airport}` : d.hotel ? `h:${d.hotel.property}` : null
     if (!key) continue
-    const label = d.kind === 'flight' && d.flight ? `${d.originAirport} → ${d.destination.airport} · ${CABIN_LABELS[d.flight.cabin as Cabin]}` : `${d.hotel!.property}`
+    const label = d.kind === 'flight' && d.flight ? `${d.originAirport} → ${d.destination.airport}` : `${d.hotel!.property}`
     const s = series.get(key) ?? { label, items: [], demo: true }
     s.items.push(e)
     if (d.sourceKind !== 'demo') s.demo = false
     series.set(key, s)
   }
   const keys = [...series.keys()].sort((a, b) => series.get(b)!.items.length - series.get(a)!.items.length)
-  const selectedKey = sp.key && series.has(sp.key) ? sp.key : keys[0]
-  const selected = selectedKey ? series.get(selectedKey)! : null
+  const selectedKey = wanted.key && series.has(wanted.key) ? wanted.key : keys[0]
+  const route = selectedKey ? series.get(selectedKey)! : null
+
+  // Cabin tabs for a route: how many dates each cabin has and its lowest price.
+  const tabs: { cabin: Cabin; dates: number; lowest: number | null }[] = []
+  if (route && selectedKey?.startsWith('f:')) {
+    for (const cabin of CABINS) {
+      const list = route.items.filter((e) => e.deal.flight?.cabin === cabin)
+      if (!list.length) continue
+      const prices = list.filter((e) => e.deal.availability !== 'unavailable' && e.deal.programPoints != null).map((e) => e.deal.programPoints!)
+      tabs.push({ cabin, dates: new Set(list.map((e) => e.deal.travelStart)).size, lowest: prices.length ? Math.min(...prices) : null })
+    }
+  }
+  const selectedCabin = tabs.length ? (tabs.find((t) => t.cabin === wanted.cabin) ?? [...tabs].sort((a, b) => b.dates - a.dates)[0]!).cabin : null
+  const selected = route
+    ? {
+        ...route,
+        label: selectedCabin ? `${route.label} · ${CABIN_LABELS[selectedCabin]}` : route.label,
+        items: selectedCabin ? route.items.filter((e) => e.deal.flight?.cabin === selectedCabin) : route.items,
+      }
+    : null
 
   let cells: CalendarCell[] = []
   const months: string[] = []
@@ -101,9 +118,11 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     for (const [month, list] of [...byMonth.entries()].sort()) seasonal.push({ month, count: list.length, min: Math.min(...list), median: median(list) })
   }
 
-  const firstFlight = selected?.items.find((i) => i.deal.kind === 'flight')?.deal
   const today = now.toISOString().slice(0, 10)
-  const in60 = new Date(now.getTime() + 60 * 86_400_000).toISOString().slice(0, 10)
+  const day = (n: number) => new Date(now.getTime() + n * 86_400_000).toISOString().slice(0, 10)
+  const in60 = day(60)
+  const in7 = day(7)
+  const in74 = day(74)
 
   return (
     <div className="space-y-6">
@@ -115,7 +134,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           <SearchPanel
             flights={
               <AwardSearchForm
-                defaults={{ origin: data.account.profile.homeAirports[0] ?? 'LAX', destination: '', cabin: firstFlight?.flight?.cabin ?? 'business', startDate: today, endDate: in60 }}
+                defaults={{ origin: data.account.profile.homeAirports[0] ?? 'LAX', destination: '', cabin: 'all', startDate: today, endDate: in60, returnStart: in7, returnEnd: in74 }}
                 homeAirports={data.account.profile.homeAirports}
                 destinationCount={DISCOVERY_DESTINATIONS.reduce((n, g) => n + g.airports.length, 0)}
                 canPrice={integrationStatus().serpApi}
@@ -135,6 +154,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       ) : (
         <>
           <form method="get" className="flex flex-wrap items-end gap-2">
+            {/* Keep the cabin when switching routes; a route without it shows its busiest cabin. */}
+            {selectedCabin && <input type="hidden" name="cabin" value={selectedCabin} />}
             <div>
               <label htmlFor="ck" className="label">
                 Route or property
@@ -156,6 +177,28 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           {selected && (
             <Card className="p-5">
               <SectionTitle aside={selected.demo ? <Badge tone="gold">Demo data</Badge> : undefined}>{selected.label}</SectionTitle>
+              {tabs.length > 0 && (
+                <nav aria-label="Cabin" className="-mx-1 mb-4 flex gap-1.5 overflow-x-auto px-1 pb-1">
+                  {tabs.map((t) => {
+                    const active = t.cabin === selectedCabin
+                    return (
+                      <Link
+                        key={t.cabin}
+                        href={{ query: { key: selectedKey, cabin: t.cabin } }}
+                        scroll={false}
+                        aria-current={active ? 'page' : undefined}
+                        className={`shrink-0 rounded-xl border px-3 py-1.5 text-sm ${active ? 'border-primary bg-primary text-primary-ink' : 'border-line bg-surface hover:bg-surface-2'}`}
+                      >
+                        <span className="font-semibold">{CABIN_LABELS[t.cabin]}</span>
+                        <span className={`block text-xs ${active ? 'opacity-90' : 'text-muted'}`}>
+                          {t.dates} date{t.dates === 1 ? '' : 's'}
+                          {t.lowest != null ? ` · from ${points(t.lowest)}` : ''}
+                        </span>
+                      </Link>
+                    )
+                  })}
+                </nav>
+              )}
               <AwardCalendar cells={cells} months={months} label={selected.label} />
             </Card>
           )}
