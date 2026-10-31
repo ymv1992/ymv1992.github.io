@@ -78,9 +78,16 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
         title={trip.name}
         subtitle={[trip.destination, trip.startDate ? dateRange(trip.startDate, trip.endDate) : `${days.length} days · dates not set`].filter(Boolean).join(' · ')}
         actions={
-          <a href={`/trips/${trip.id}/pdf`} className={buttonClass('secondary', 'sm')} download>
-            <Icon name="download" className="size-4" /> Download PDF
-          </a>
+          <>
+            <a href={`/trips/${trip.id}/pdf`} className={buttonClass('secondary', 'sm')} download>
+              <Icon name="download" className="size-4" /> Download PDF
+            </a>
+            <form action={deleteTripAction.bind(null, trip.id)}>
+              <ConfirmSubmit message={`Delete "${trip.name}" and everything in it? This can't be undone.`} className={buttonClass('danger', 'sm')}>
+                <Icon name="trash" className="size-4" /> Delete trip
+              </ConfirmSubmit>
+            </form>
+          </>
         }
       />
       <p className="-mt-3 text-sm">
@@ -248,11 +255,6 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
                   }}
                 />
                 <p className="mt-2 text-xs text-muted">Making a trip shorter moves anything on the removed days to Ideas.</p>
-                <form action={deleteTripAction.bind(null, trip.id)} className="mt-4 border-t border-line pt-3">
-                  <ConfirmSubmit message={`Delete "${trip.name}" and everything in it? This can't be undone.`} className="text-sm text-danger underline-offset-2 hover:underline">
-                    Delete this trip
-                  </ConfirmSubmit>
-                </form>
               </div>
             </details>
           </Card>
