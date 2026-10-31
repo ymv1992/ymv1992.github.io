@@ -32,7 +32,7 @@ const segmentSchema = z
 const itinerarySchema = z
   .object({
     flights: z.array(segmentSchema),
-    layovers: z.array(z.object({ duration: z.number().optional() }).passthrough()).optional(),
+    layovers: z.array(z.object({ duration: z.number().optional(), id: z.string().optional(), overnight: z.boolean().optional() }).passthrough()).optional(),
     total_duration: z.number().optional(),
     price: z.number().optional(),
   })
@@ -42,6 +42,15 @@ const flightsResponseSchema = z
   .object({
     best_flights: z.array(itinerarySchema).optional(),
     other_flights: z.array(itinerarySchema).optional(),
+    price_insights: z
+      .object({
+        lowest_price: z.number().optional(),
+        price_level: z.string().optional(),
+        typical_price_range: z.array(z.number()).optional(),
+      })
+      .passthrough()
+      .optional(),
+    search_metadata: z.object({ google_flights_url: z.string().optional() }).passthrough().optional(),
     error: z.string().optional(),
   })
   .passthrough()
@@ -134,6 +143,96 @@ export async function searchFlightPrice(
     aircraft: best.flights.map((f) => f.airplane).filter(Boolean).join(' / ') || null,
     seatType: seat,
     cashProduct: { cabin: p.cabin, seatType: seat === 'unknown' ? null : seat, origin: p.from, destination: p.to, date: p.date, stops: best.flights.length - 1, refundable: false, mixedCabin },
+  }
+}
+
+export interface CashItinerary {
+  /** Total for all passengers (the whole round trip, for round trips). */
+  priceUsd: number
+  airlines: string
+  flightNumbers: string[]
+  departTime: string
+  arriveTime: string
+  arriveDayOffset: number
+  durationMinutes: number | null
+  stops: number
+  /** Airports where you change planes. */
+  via: string[]
+  aircraft: string | null
+  cabin: string | null
+  overnightLayover: boolean
+  /** Google picked it as one of the best options. */
+  best: boolean
+}
+
+export interface CashFareSearch {
+  itineraries: CashItinerary[]
+  /** Google's view of today's prices for this trip. */
+  insights: { lowestUsd: number | null; level: string | null; typicalLowUsd: number | null; typicalHighUsd: number | null } | null
+  googleFlightsUrl: string | null
+}
+
+/**
+ * Cash fares from Google Flights for a one-way or round trip (one SerpApi
+ * search). For round trips the price covers both ways; the return is picked
+ * on Google Flights. Null when Google has no fares for that day.
+ */
+export async function searchCashFares(
+  apiKey: string,
+  p: { from: string; to: string; date: string; returnDate: string | null; cabin: Cabin; adults: number; nonstop: boolean },
+  fetchImpl: typeof fetch = fetch,
+): Promise<CashFareSearch | null> {
+  const qs = new URLSearchParams({
+    engine: 'google_flights',
+    departure_id: p.from,
+    arrival_id: p.to,
+    outbound_date: p.date,
+    ...(p.returnDate ? { return_date: p.returnDate, type: '1' } : { type: '2' }),
+    travel_class: TRAVEL_CLASS[p.cabin],
+    adults: String(p.adults),
+    ...(p.nonstop ? { stops: '1' } : {}),
+    currency: 'USD',
+    hl: 'en',
+    gl: 'us',
+    api_key: apiKey,
+  })
+  const res = await fetchImpl(`${BASE}?${qs}`, { signal: AbortSignal.timeout(45_000) })
+  if (!res.ok) throw new Error(`SerpApi responded ${res.status}`)
+  const body = flightsResponseSchema.parse(await res.json())
+  if (body.error) {
+    if (NO_RESULTS.test(body.error)) return null
+    throw new Error(`SerpApi: ${body.error}`)
+  }
+  const tag = (list: z.infer<typeof itinerarySchema>[] | undefined, best: boolean) => (list ?? []).map((i) => ({ i, best }))
+  const itineraries: CashItinerary[] = []
+  for (const { i, best } of [...tag(body.best_flights, true), ...tag(body.other_flights, false)]) {
+    const first = i.flights[0]
+    const last = i.flights.at(-1)
+    const dep = splitTime(first?.departure_airport?.time)
+    const arr = splitTime(last?.arrival_airport?.time)
+    if (!i.price || i.price <= 0 || !dep || !arr) continue
+    itineraries.push({
+      priceUsd: i.price,
+      airlines: [...new Set(i.flights.map((f) => f.airline).filter(Boolean))].join(', '),
+      flightNumbers: i.flights.map((f) => f.flight_number).filter((x): x is string => !!x),
+      departTime: dep.time,
+      arriveTime: arr.time,
+      arriveDayOffset: Math.max(0, Math.round((Date.parse(`${arr.date}T00:00:00Z`) - Date.parse(`${dep.date}T00:00:00Z`)) / 86_400_000)),
+      durationMinutes: i.total_duration ?? null,
+      stops: i.flights.length - 1,
+      via: i.flights.slice(0, -1).map((f) => f.arrival_airport?.id).filter((x): x is string => !!x),
+      aircraft: [...new Set(i.flights.map((f) => f.airplane).filter(Boolean))].join(' / ') || null,
+      cabin: first?.travel_class ?? null,
+      overnightLayover: (i.layovers ?? []).some((l) => l.overnight === true),
+      best,
+    })
+  }
+  const pi = body.price_insights
+  const url = body.search_metadata?.google_flights_url
+  return {
+    itineraries,
+    insights: pi ? { lowestUsd: pi.lowest_price ?? null, level: pi.price_level ?? null, typicalLowUsd: pi.typical_price_range?.[0] ?? null, typicalHighUsd: pi.typical_price_range?.[1] ?? null } : null,
+    googleFlightsUrl: url && /^https:\/\/www\.google\.com\/travel\/flights/.test(url) ? url : null,
   }
 }
 

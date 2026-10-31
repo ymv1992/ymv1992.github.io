@@ -6,7 +6,10 @@ import { awardSearchSchema, runAwardSearch, type AwardSearchOutcome } from '@/li
 import { airlineName, AWARD_PROGRAMS } from '@/lib/domain/airlines'
 import { z } from 'zod'
 import { loadAccount } from '@/lib/data/account'
+import { cashSearchSchema, searchCashFlights, type CashSearchOutcome } from '@/lib/data/cash-flights'
 import { lookupCashPrice } from '@/lib/data/cash-prices'
+import { cardLabel, type CardType } from '@/lib/domain/constants'
+import { FLIGHT_EARN, type FlightEarnRates } from '@/lib/domain/earning'
 import { getDeal } from '@/lib/data/deals'
 import { evaluateMany } from '@/lib/data/evaluation'
 import { hotelSearchSchema, runHotelSearch, type HotelSearchResultRow } from '@/lib/data/hotel-search'
@@ -160,4 +163,44 @@ export async function priceDealAction(dealId: string): Promise<PriceState> {
   revalidatePath('/', 'layout')
   const cpp = value?.valuation.calculable ? (value.valuation.practicalCpp ?? value.valuation.headlineCpp) : null
   return { ok: true, message: cpp != null ? `$${Math.round(r.cashUsd).toLocaleString('en-US')} cash · ${cpp.toFixed(2)}¢/pt` : `$${Math.round(r.cashUsd).toLocaleString('en-US')} cash`, cashUsd: r.cashUsd, cpp }
+}
+
+export interface CashSearchState {
+  error: string | null
+  outcome?: Extract<CashSearchOutcome, { ok: true }>
+  /** The card's earning rates and the owner's point value, for the comparison. */
+  earn?: { cardLabel: string; rates: FlightEarnRates; pointCents: number; adults: number; roundTrip: boolean }
+  values?: { from: string; to: string; date: string; returnDate: string; cabin: string; adults: string; nonstop: boolean }
+  attempt?: number
+}
+
+/** Cash fares from Google Flights, with the Chase points each would earn (one SerpApi search). */
+export async function searchCashAction(prev: CashSearchState, fd: FormData): Promise<CashSearchState> {
+  const userId = await requireUserId()
+  const values = {
+    from: String(fd.get('from') ?? '').trim().toUpperCase(),
+    to: String(fd.get('to') ?? '').trim().toUpperCase(),
+    date: String(fd.get('date') ?? ''),
+    returnDate: String(fd.get('returnDate') ?? ''),
+    cabin: String(fd.get('cabin') ?? 'economy'),
+    adults: String(fd.get('adults') ?? '1'),
+    nonstop: fd.get('nonstop') === 'on',
+  }
+  const echo = { values, attempt: (prev.attempt ?? 0) + 1 }
+  const key = config.serpApiKey()
+  if (!key) return { ...echo, error: 'Cash fares need the SerpApi key (SERPAPI_API_KEY). See Settings → Data sources.' }
+  const parsed = cashSearchSchema.safeParse(values)
+  if (!parsed.success) return { ...echo, error: parsed.error.issues[0]?.message ?? 'Check the search' }
+  const db = await getDb()
+  const { settings, wallet } = await loadAccount(db, userId)
+  const out = await searchCashFlights(db, parsed.data, { apiKey: key, now: new Date(), fetch, monthlyCapUsd: settings.monthlyApiBudgetUsd })
+  revalidatePath('/settings')
+  if (!out.ok) return { ...echo, error: out.error }
+  const card = wallet.cardType as CardType
+  return {
+    ...echo,
+    error: null,
+    outcome: out,
+    earn: { cardLabel: cardLabel(card), rates: FLIGHT_EARN[card] ?? FLIGHT_EARN.other, pointCents: settings.pointFloorCents, adults: parsed.data.adults, roundTrip: !!parsed.data.returnDate },
+  }
 }
