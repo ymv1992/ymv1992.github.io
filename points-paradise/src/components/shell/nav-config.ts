@@ -17,6 +17,7 @@ export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
       { href: '/categories', label: 'Categories', icon: 'grid' },
       { href: '/explore', label: 'Explore', icon: 'globe', primary: true },
       { href: '/calendar', label: 'Award Calendar', icon: 'calendar' },
+      { href: '/weekends', label: 'Weekend getaways', icon: 'sun' },
     ],
   },
   {
