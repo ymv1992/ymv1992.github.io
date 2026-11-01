@@ -390,6 +390,23 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
   1–5 nights and the programs (Hyatt, Marriott, IHG, Wyndham). Each search
   is one lookup. Results show Chase points, the hotel's cash rate and the
   value, best value first.
+- **Weekend getaways (Discover → Weekend getaways).** Shows where points
+  can take you over the next 4, 8 or 12 weekends from your home airports.
+  - Choose a long weekend (out Thursday or Friday, back Sunday or Monday)
+    or a plain weekend (Friday to Sunday).
+  - Choose a flight length: up to about 3 hours, about 5 hours, or any
+    distance. It uses seats.aero's route distance.
+  - Also choose the cabin and how many seats you need.
+  - For each weekend, the site finds the cheapest way out and the cheapest
+    way back to each city. It lists the six cheapest, in Chase points,
+    including any Chase transfer bonus.
+  - When both legs use the same program, one transfer covers both, so the
+    total is rounded only once.
+  - Each search checks every popular destination plus your dream
+    destinations, both ways. That's about 20 of your 1,000 daily seats.aero
+    lookups.
+  - Cached award space has no flight times, so check times with the airline
+    before transferring.
 - **Cash fares (Award Calendar → Cash fares).** Search Google Flights for
   cash prices, one way or round trip, by cabin, number of travelers and
   nonstop only. Each search uses one SerpApi search from the same monthly

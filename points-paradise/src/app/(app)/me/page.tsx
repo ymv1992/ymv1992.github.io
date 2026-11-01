@@ -10,9 +10,11 @@ export const metadata: Metadata = { title: 'Profile' }
 
 const LINKS: { href: string; label: string; icon: IconName; hint: string }[] = [
   { href: '/trips', label: 'My Trips', icon: 'suitcase', hint: 'Day-by-day plans you can rearrange, tick off and share' },
+  { href: '/ideas', label: 'Ideas', icon: 'heart', hint: 'Save places from TikTok, swipe through things to do' },
+  { href: '/weekends', label: 'Weekend getaways', icon: 'sun', hint: 'Where points can take you over the coming weekends' },
   { href: '/trip-architect', label: 'Trip Architect', icon: 'sparkles', hint: 'Assemble complete trips within your budget' },
   { href: '/transfers', label: 'Transfer Center', icon: 'transfer', hint: 'Partners, ratios, bonuses and the calculator' },
-  { href: '/calendar', label: 'Award Calendar', icon: 'calendar', hint: 'Flexible dates and price history' },
+  { href: '/calendar', label: 'Award Calendar', icon: 'calendar', hint: 'Award, hotel and cash fare search; flexible dates' },
   { href: '/positioning', label: 'Positioning optimizer', icon: 'plane', hint: 'Is another departure airport worth it?' },
   { href: '/categories', label: 'Category leaderboards', icon: 'grid', hint: 'Business, first, resorts, weekend…' },
   { href: '/alerts', label: 'Alerts', icon: 'bell', hint: 'Notifications, watches and alert criteria' },

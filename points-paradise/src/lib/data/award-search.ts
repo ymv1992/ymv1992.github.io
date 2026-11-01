@@ -257,6 +257,32 @@ function bestRoundTrips(outs: readonly Option[], backs: readonly Option[]): { ca
 }
 
 /**
+ * Prices awards in Chase points for the owner's card: the transfer ratio and
+ * any active, non-targeted Chase transfer bonus, with the bonus flagged.
+ */
+export async function chasePricer(db: AppDb, card: CardType, now: Date): Promise<(programId: string, programPoints: number) => { chasePoints: number | null; bonus: TransferBonusFlag | null }> {
+  const partners = new Map((await db.select().from(transferPartners)).map((r) => [r.id, partnerFromRow(r)]))
+  const promotions = (await db.select().from(transferPromotions)).map(promotionFromRow)
+  return (programId, programPoints) => {
+    const q = quoteTransfer({ programId, programPoints, partners, promotions, card, at: now })
+    if (!q) return { chasePoints: null, bonus: null }
+    const promo = q.bonusSource === 'promotion' ? q.promotion : null
+    const bonus: TransferBonusFlag | null = promo
+      ? {
+          percent: q.bonusPercent,
+          partnerName: q.partnerName ?? programId,
+          endsAt: promo.endsAt?.toISOString() ?? null,
+          endsAtTimezone: promo.endsAtTimezone,
+          verification: promo.verificationStatus,
+          sourceUrl: promo.sourceUrl,
+          chasePointsWithout: quoteTransfer({ programId, programPoints, partners, promotions: [], card, at: now })?.requirement.chasePoints ?? null,
+        }
+      : null
+    return { chasePoints: q.requirement.chasePoints, bonus }
+  }
+}
+
+/**
  * Owner-requested award search through seats.aero's cached search. With no
  * destination it checks every discovery destination group from the origin
  * (one request per group) and keeps the cheapest date per city and month.
@@ -314,26 +340,7 @@ export async function runAwardSearch(db: AppDb, userId: string, apiKey: string, 
   if (failures.length === responses.length) return { ok: false, error: failures[0]?.error ?? 'Search failed' }
 
   // Chase points per option (ratio and any active, non-targeted Chase bonus), for ranking and the bonus flag.
-  const partners = new Map((await db.select().from(transferPartners)).map((r) => [r.id, partnerFromRow(r)]))
-  const promotions = (await db.select().from(transferPromotions)).map(promotionFromRow)
-  const card = account.wallet.cardType as CardType
-  const priced = (programId: string, programPoints: number) => {
-    const q = quoteTransfer({ programId, programPoints, partners, promotions, card, at: now })
-    if (!q) return { chasePoints: null, bonus: null }
-    const promo = q.bonusSource === 'promotion' ? q.promotion : null
-    const bonus: TransferBonusFlag | null = promo
-      ? {
-          percent: q.bonusPercent,
-          partnerName: q.partnerName ?? programId,
-          endsAt: promo.endsAt?.toISOString() ?? null,
-          endsAtTimezone: promo.endsAtTimezone,
-          verification: promo.verificationStatus,
-          sourceUrl: promo.sourceUrl,
-          chasePointsWithout: quoteTransfer({ programId, programPoints, partners, promotions: [], card, at: now })?.requirement.chasePoints ?? null,
-        }
-      : null
-    return { chasePoints: q.requirement.chasePoints, bonus }
-  }
+  const priced = await chasePricer(db, account.wallet.cardType as CardType, now)
 
   const options: Record<Request['leg'], Option[]> = { out: [], back: [] }
   let truncated = false
@@ -432,7 +439,8 @@ export async function runAwardSearch(db: AppDb, userId: string, apiKey: string, 
     out: o,
     back: b,
     points: o.points + b.points,
-    chasePoints: o.chasePoints != null && b.chasePoints != null ? o.chasePoints + b.chasePoints : null,
+    // Same program both ways: one transfer covers both, rounded once.
+    chasePoints: o.programId === b.programId ? priced(o.programId, o.points + b.points).chasePoints : o.chasePoints != null && b.chasePoints != null ? o.chasePoints + b.chasePoints : null,
     taxesUsd: o.taxesUsd != null && b.taxesUsd != null ? o.taxesUsd + b.taxesUsd : null,
   }))
   await db.insert(searchHistory).values({ userId, context: anywhere ? 'award_search_anywhere' : 'award_search', query: { ...input, origins } })
