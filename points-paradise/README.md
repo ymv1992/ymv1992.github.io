@@ -427,6 +427,15 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
     couldn't be confirmed are labelled and assume 1×.
   - **Open this search in Google Flights** goes to Google's own link for
     the search.
+  - **Anywhere:** leave "To" empty. One search, using SerpApi's Google
+    Travel Explore, lists the cheapest places to fly from your airport on
+    those dates, cheapest first.
+    - These are Google's Explore prices: per person, in economy.
+    - Each place shows its dates, airline, stops, flying time and hotel
+      prices when Google gives them, plus the Chase points it would earn.
+    - **Show flights** searches that airport's exact flights (1 more
+      search). **← Back to all destinations** shows the list again without
+      a new search.
 - **Award Calendar.** Heatmap, price-history chart, seasonal table and
   predictions marked with their evidence tier. Predictions are withheld when
   there is too little data. Pick a route, then a **cabin tab** (Economy,
