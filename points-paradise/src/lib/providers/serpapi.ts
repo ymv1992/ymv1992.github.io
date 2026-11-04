@@ -367,3 +367,110 @@ export async function searchHotelRate(
     cashProduct: { property: p.property, roomType: 'standard', guests: p.adults, checkIn: p.checkIn, checkOut: p.checkOut, mealsIncluded: false },
   }
 }
+
+/** A number from Google's JSON, which sometimes sends "$289" or "4 hr 35 min" as text. */
+const looseNumber = z.preprocess((v) => {
+  if (typeof v === 'number') return v
+  if (typeof v === 'string') {
+    const n = Number(v.replace(/[^0-9.]/g, ''))
+    return v.trim() && Number.isFinite(n) ? n : undefined
+  }
+  return undefined
+}, z.number().optional())
+
+const exploreDestinationSchema = z
+  .object({
+    name: z.string().optional(),
+    country: z.string().optional(),
+    destination_airport: z.union([z.object({ code: z.string().optional(), id: z.string().optional(), name: z.string().optional() }).passthrough(), z.string()]).optional(),
+    airport_code: z.string().optional(),
+    start_date: z.string().optional(),
+    end_date: z.string().optional(),
+    flight_price: looseNumber,
+    price: looseNumber,
+    hotel_price: looseNumber,
+    airline: z.string().optional(),
+    number_of_stops: looseNumber,
+    stops: looseNumber,
+    flight_duration: z.union([z.number(), z.string()]).optional(),
+    link: z.string().optional(),
+    thumbnail: z.string().optional(),
+  })
+  .passthrough()
+
+const exploreResponseSchema = z.object({ destinations: z.array(z.unknown()).optional(), error: z.string().optional() }).passthrough()
+
+export interface ExploreDestination {
+  city: string
+  country: string | null
+  /** The airport Google priced, when it says (to look up its flights). */
+  airport: string | null
+  startDate: string | null
+  endDate: string | null
+  /** Cheapest round trip (or one way) Google shows for this place, per person. */
+  priceUsd: number
+  hotelPriceUsd: number | null
+  airline: string | null
+  stops: number | null
+  /** "4 hr 35 min", or minutes. */
+  duration: string | null
+  /** Google's own page for this destination. */
+  link: string | null
+  thumbnail: string | null
+}
+
+function durationText(v: number | string | undefined): string | null {
+  if (v == null || v === '') return null
+  if (typeof v === 'number') return `${Math.floor(v / 60)}h ${String(Math.round(v % 60)).padStart(2, '0')}m`
+  return v.trim().slice(0, 40) || null
+}
+
+/**
+ * "Anywhere": Google's Explore view of the cheapest places to fly from an
+ * airport on given dates (one SerpApi search, Google Travel Explore). Prices
+ * are Google's cheapest per person; entries without a price are left out.
+ */
+export async function exploreCashFares(apiKey: string, p: { from: string; date: string; returnDate: string | null }, fetchImpl: typeof fetch = fetch): Promise<ExploreDestination[]> {
+  const qs = new URLSearchParams({
+    engine: 'google_travel_explore',
+    departure_id: p.from,
+    outbound_date: p.date,
+    ...(p.returnDate ? { return_date: p.returnDate } : {}),
+    currency: 'USD',
+    hl: 'en',
+    gl: 'us',
+    api_key: apiKey,
+  })
+  const res = await fetchImpl(`${BASE}?${qs}`, { signal: AbortSignal.timeout(45_000) })
+  if (!res.ok) throw new Error(`SerpApi responded ${res.status}`)
+  const body = exploreResponseSchema.parse(await res.json())
+  if (body.error) {
+    if (NO_RESULTS.test(body.error)) return []
+    throw new Error(`SerpApi: ${body.error}`)
+  }
+  const out: ExploreDestination[] = []
+  for (const raw of body.destinations ?? []) {
+    const r = exploreDestinationSchema.safeParse(raw)
+    if (!r.success || !r.data.name) continue
+    const d = { ...r.data, name: r.data.name }
+    const price = d.flight_price ?? d.price
+    if (price == null || price <= 0) continue
+    const ap = typeof d.destination_airport === 'string' ? d.destination_airport : (d.destination_airport?.code ?? d.destination_airport?.id)
+    const airport = (ap ?? d.airport_code ?? '').trim().toUpperCase()
+    out.push({
+      city: d.name.slice(0, 80),
+      country: d.country?.slice(0, 60) ?? null,
+      airport: /^[A-Z]{3}$/.test(airport) ? airport : null,
+      startDate: d.start_date && /^\d{4}-\d{2}-\d{2}/.test(d.start_date) ? d.start_date.slice(0, 10) : null,
+      endDate: d.end_date && /^\d{4}-\d{2}-\d{2}/.test(d.end_date) ? d.end_date.slice(0, 10) : null,
+      priceUsd: price,
+      hotelPriceUsd: d.hotel_price ?? null,
+      airline: d.airline?.slice(0, 60) ?? null,
+      stops: d.number_of_stops ?? d.stops ?? null,
+      duration: durationText(d.flight_duration),
+      link: d.link && /^https:\/\/www\.google\.com\/travel\//.test(d.link) ? d.link : null,
+      thumbnail: d.thumbnail && /^https:\/\//.test(d.thumbnail) ? d.thumbnail : null,
+    })
+  }
+  return out.sort((a, b) => a.priceUsd - b.priceUsd)
+}

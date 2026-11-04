@@ -5,7 +5,7 @@ import { searchJobs } from '@/lib/db/schema'
 import { cashSearchSchema, searchCashFlights } from '@/lib/data/cash-flights'
 import { compareEarning, FLIGHT_EARN } from '@/lib/domain/earning'
 import { CARD_TYPE_IDS } from '@/lib/domain/constants'
-import { searchCashFares } from '@/lib/providers/serpapi'
+import { exploreCashFares, searchCashFares } from '@/lib/providers/serpapi'
 import { NOW } from '../fixtures'
 import { json, router } from '../place-fixtures'
 import { createTestDb } from '../test-db'
@@ -93,7 +93,7 @@ describe('Google Flights cash fares', () => {
     const input = cashSearchSchema.parse({ from: 'lax', to: 'cun', date: '2026-11-05', returnDate: '', cabin: 'economy', adults: '1', nonstop: false })
     const calls: URL[] = []
     const ok = await searchCashFlights(db, input, { apiKey: 'k', now: NOW, fetch: google(calls), monthlyCapUsd: 10 })
-    expect(ok.ok && ok.itineraries).toHaveLength(2)
+    expect(ok.ok && ok.mode === 'route' && ok.itineraries).toHaveLength(2)
     const [job] = await db.select().from(searchJobs)
     expect(job).toMatchObject({ provider: 'serpapi_flights', jobType: 'cash_search', status: 'succeeded', requestCount: 1 })
     expect(await searchCashFlights(db, { ...input, date: '2026-10-01' }, { apiKey: 'k', now: NOW, fetch: google(calls), monthlyCapUsd: 10 })).toEqual({ ok: false, error: 'Choose a date from today on.' })
@@ -107,5 +107,53 @@ describe('Google Flights cash fares', () => {
     expect(cashSearchSchema.safeParse({ from: 'LAX', to: 'LAX', date: '2026-11-05', cabin: 'economy' }).error?.issues[0]?.message).toBe('From and To are the same airport')
     expect(cashSearchSchema.safeParse({ from: 'LAX', to: 'CUN', date: '2026-11-05', returnDate: '2026-11-01', cabin: 'economy' }).error?.issues[0]?.message).toBe('The return is before the departure')
     expect(cashSearchSchema.safeParse({ from: 'Los Angeles', to: 'CUN', date: '2026-11-05', cabin: 'economy' }).success).toBe(false)
+  })
+})
+
+describe('Anywhere (Google’s Explore view)', () => {
+  const explore = (calls: URL[] = []) =>
+    router({
+      'serpapi.com': (u) => {
+        calls.push(u)
+        return json({
+          destinations: [
+            { name: 'Cancún', country: 'Mexico', destination_airport: { code: 'CUN' }, start_date: '2026-11-05', end_date: '2026-11-12', flight_price: 289, hotel_price: 120, airline: 'United', number_of_stops: 0, flight_duration: 275, link: 'https://www.google.com/travel/explore?tfs=1', thumbnail: 'https://lh3.googleusercontent.com/x' },
+            { name: 'Honolulu', country: 'United States', airport_code: 'hnl', flight_price: '$412', stops: 1, flight_duration: '5 hr 50 min' },
+            { name: 'Somewhere', country: 'Nowhere' },
+            { name: 'Lima', destination_airport: 'LIM', flight_price: 199, link: 'https://evil.example/x' },
+          ],
+        })
+      },
+    })
+
+  it('reads every destination with a price, cheapest first, keeping only Google’s own links', async () => {
+    const calls: URL[] = []
+    const d = await exploreCashFares('k', { from: 'LAX', date: '2026-11-05', returnDate: '2026-11-12' }, explore(calls))
+    expect(Object.fromEntries([...calls[0]!.searchParams].filter(([k]) => ['engine', 'departure_id', 'outbound_date', 'return_date'].includes(k)))).toEqual({
+      engine: 'google_travel_explore',
+      departure_id: 'LAX',
+      outbound_date: '2026-11-05',
+      return_date: '2026-11-12',
+    })
+    expect(d.map((x) => [x.city, x.airport, x.priceUsd, x.stops, x.duration, x.link])).toEqual([
+      ['Lima', 'LIM', 199, null, null, null],
+      ['Cancún', 'CUN', 289, 0, '4h 35m', 'https://www.google.com/travel/explore?tfs=1'],
+      ['Honolulu', 'HNL', 412, 1, '5 hr 50 min', null],
+    ])
+    expect(d[1]).toMatchObject({ country: 'Mexico', startDate: '2026-11-05', endDate: '2026-11-12', hotelPriceUsd: 120, airline: 'United' })
+  })
+
+  it('runs when “To” is empty, using one search', async () => {
+    const input = cashSearchSchema.parse({ from: 'LAX', to: '', date: '2026-11-05', returnDate: '2026-11-12', cabin: 'economy' })
+    expect(input.to).toBeNull()
+    expect(cashSearchSchema.parse({ from: 'LAX', to: 'anywhere', date: '2026-11-05', cabin: 'economy' }).to).toBeNull()
+    const calls: URL[] = []
+    const r = await searchCashFlights(db, input, { apiKey: 'k', now: NOW, fetch: explore(calls), monthlyCapUsd: 10 })
+    expect(r.ok && r.mode === 'anywhere' && r.destinations.map((x) => x.city)).toEqual(['Lima', 'Cancún', 'Honolulu'])
+    expect(calls).toHaveLength(1)
+    const [job] = await db.select().from(searchJobs)
+    expect(job).toMatchObject({ provider: 'serpapi_flights', jobType: 'cash_explore', status: 'succeeded', requestCount: 1, resultsCount: 3 })
+    const none = await searchCashFlights(db, input, { apiKey: 'k', now: NOW, fetch: router({ 'serpapi.com': () => json({ destinations: [] }) }), monthlyCapUsd: 10 })
+    expect(none).toEqual({ ok: false, error: 'Google didn’t show any destinations from LAX for those dates. Try other dates.' })
   })
 })

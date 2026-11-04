@@ -1,10 +1,10 @@
 'use client'
 
-import { useActionState, useId, useState } from 'react'
+import { useActionState, useId, useRef, useState } from 'react'
 import { searchCashAction, type CashSearchState } from '@/app/actions/search-actions'
 import { CABINS, CABIN_LABELS } from '@/lib/domain/constants'
 import { compareEarning, type FlightEarnRates } from '@/lib/domain/earning'
-import type { CashItinerary } from '@/lib/providers/serpapi'
+import type { CashItinerary, ExploreDestination } from '@/lib/providers/serpapi'
 import { Badge, Button } from '../ui'
 
 const usd = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
@@ -87,16 +87,79 @@ function Itinerary({ it, rates, pointCents, perLabel }: { it: CashItinerary; rat
   )
 }
 
+const shortDay = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+
+/** One "Anywhere" result: the cheapest fare Google shows to a place, with the points it would earn. */
+function Destination({ d, rates, pointCents, roundTrip, onShow }: { d: ExploreDestination; rates: FlightEarnRates; pointCents: number; roundTrip: boolean; onShow: (() => void) | null }) {
+  return (
+    <li className="rounded-xl border border-line bg-surface p-3">
+      <div className="flex gap-3">
+        {d.thumbnail && (
+          // eslint-disable-next-line @next/next/no-img-element -- Google's destination thumbnail; next/image would need the host allow-listed for no gain.
+          <img src={d.thumbnail} alt="" loading="lazy" className="size-16 shrink-0 rounded-lg object-cover" />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+            <p className="font-semibold">
+              {d.city}
+              {d.country ? <span className="font-normal text-muted">, {d.country}</span> : null}
+              {d.airport ? <span className="text-xs font-normal text-muted"> · {d.airport}</span> : null}
+            </p>
+            <p className="tabular text-lg font-semibold">
+              {usd(d.priceUsd)} <span className="text-xs font-normal text-muted">{roundTrip ? 'round trip' : 'one way'}</span>
+            </p>
+          </div>
+          <p className="text-xs text-muted">
+            {[
+              d.startDate ? `${shortDay(d.startDate)}${d.endDate ? ` – ${shortDay(d.endDate)}` : ''}` : null,
+              d.airline,
+              d.stops === 0 ? 'Nonstop' : d.stops != null ? `${d.stops} stop${d.stops > 1 ? 's' : ''}` : null,
+              d.duration,
+              d.hotelPriceUsd != null ? `hotels from ${usd(d.hotelPriceUsd)}/night` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs">
+            {onShow && (
+              <button type="button" onClick={onShow} className="rounded-full border border-line px-2.5 py-1 text-primary hover:bg-surface-2">
+                Show flights
+              </button>
+            )}
+            {d.link && (
+              <a href={d.link} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                Open in Google ↗
+              </a>
+            )}
+          </div>
+          <EarnPanel price={d.priceUsd} rates={rates} pointCents={pointCents} />
+        </div>
+      </div>
+    </li>
+  )
+}
+
 /** Cash flights from Google Flights, and the Chase points each would earn booked with the airline or through Chase Travel. */
 export function CashFareForm({ defaults }: { defaults: { from: string; date: string } }) {
   const [state, action, pending] = useActionState<CashSearchState, FormData>(searchCashAction, { error: null })
   const v = state.values ?? { from: defaults.from, to: '', date: defaults.date, returnDate: '', cabin: 'economy', adults: '1', nonstop: false }
-  const out = state.outcome
+  const [backToList, setBackToList] = useState<number | null>(null)
+  // Showing the kept "Anywhere" list again, until the next search.
+  const listing = backToList === (state.attempt ?? 0) && state.lastAnywhere
+  const out = listing ? { ok: true as const, mode: 'anywhere' as const, destinations: state.lastAnywhere!.destinations } : state.outcome
+  const form = useRef<HTMLFormElement>(null)
+  // "Show flights" on an Anywhere result: fill in that airport and search it.
+  const showFlights = (airport: string) => {
+    const f = form.current
+    if (!f) return
+    ;(f.elements.namedItem('to') as HTMLInputElement).value = airport
+    f.requestSubmit()
+  }
   const earn = state.earn
   const perLabel = earn ? `${earn.roundTrip ? 'round trip' : 'one way'}${earn.adults > 1 ? `, ${earn.adults} travelers` : ''}` : ''
   return (
     <div>
-      <form key={state.attempt ?? 0} action={action} className="grid gap-3 sm:grid-cols-6">
+      <form ref={form} key={state.attempt ?? 0} action={action} className="grid gap-3 sm:grid-cols-6">
         <div>
           <label htmlFor="c-f" className="label">
             From
@@ -105,9 +168,9 @@ export function CashFareForm({ defaults }: { defaults: { from: string; date: str
         </div>
         <div>
           <label htmlFor="c-t" className="label">
-            To
+            To <span className="font-normal text-muted">(empty = anywhere)</span>
           </label>
-          <input id="c-t" name="to" defaultValue={v.to} maxLength={3} required placeholder="CUN" className="field uppercase" />
+          <input id="c-t" name="to" defaultValue={v.to} maxLength={3} placeholder="Anywhere" className="field uppercase placeholder:normal-case" />
         </div>
         <div>
           <label htmlFor="c-d" className="label">
@@ -153,7 +216,10 @@ export function CashFareForm({ defaults }: { defaults: { from: string; date: str
             {pending ? 'Searching…' : 'Search cash fares'}
           </Button>
         </div>
-        <p className="text-xs text-muted sm:col-span-6">Prices come from Google Flights and use 1 of your monthly Google searches. Each fare shows the Chase points it would earn with the airline or through Chase Travel.</p>
+        <p className="text-xs text-muted sm:col-span-6">
+          Prices come from Google Flights and use 1 of your monthly Google searches. Leave &ldquo;To&rdquo; empty to see the cheapest places to go from your airport on those dates (Google&rsquo;s Explore view, economy, per
+          person). Each fare shows the Chase points it would earn with the airline or through Chase Travel.
+        </p>
         {state.error && (
           <p role="alert" className="text-sm text-danger sm:col-span-6">
             {state.error}
@@ -161,8 +227,30 @@ export function CashFareForm({ defaults }: { defaults: { from: string; date: str
         )}
       </form>
 
-      {out && earn && (
+      {out?.mode === 'anywhere' && earn && (
         <div className="mt-4 space-y-3">
+          <p role="status" className="text-sm">
+            The cheapest places to go from {v.from}
+            {v.returnDate ? ' and back' : ''}, according to Google, per person in economy. Tap <strong>Show flights</strong> to see the exact flights (1 more search).
+          </p>
+          <p className="text-xs text-muted">
+            Your card: {earn.cardLabel} — {earn.rates.note}.
+          </p>
+          <ul className="space-y-2" aria-label="Cheapest destinations">
+            {out.destinations.slice(0, 40).map((d, i) => (
+              <Destination key={`${d.city}-${i}`} d={d} rates={earn.rates} pointCents={earn.pointCents} roundTrip={earn.roundTrip} onShow={d.airport ? () => showFlights(d.airport!) : null} />
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {out?.mode === 'route' && earn && (
+        <div className="mt-4 space-y-3">
+          {state.lastAnywhere && (
+            <button type="button" onClick={() => setBackToList(state.attempt ?? 0)} className="text-sm text-primary hover:underline">
+              ← Back to all destinations from {state.lastAnywhere.from}
+            </button>
+          )}
           {out.insights?.level && (
             <p role="status" className="text-sm">
               Google says prices for this trip are <strong>{out.insights.level}</strong> right now

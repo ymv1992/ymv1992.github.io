@@ -168,6 +168,8 @@ export async function priceDealAction(dealId: string): Promise<PriceState> {
 export interface CashSearchState {
   error: string | null
   outcome?: Extract<CashSearchOutcome, { ok: true }>
+  /** The last "Anywhere" list, kept while looking at one destination's flights so it can be shown again without a new search. */
+  lastAnywhere?: { from: string; destinations: Extract<CashSearchOutcome, { mode: 'anywhere' }>['destinations'] }
   /** The card's earning rates and the owner's point value, for the comparison. */
   earn?: { cardLabel: string; rates: FlightEarnRates; pointCents: number; adults: number; roundTrip: boolean }
   values?: { from: string; to: string; date: string; returnDate: string; cabin: string; adults: string; nonstop: boolean }
@@ -195,12 +197,15 @@ export async function searchCashAction(prev: CashSearchState, fd: FormData): Pro
   const { settings, wallet } = await loadAccount(db, userId)
   const out = await searchCashFlights(db, parsed.data, { apiKey: key, now: new Date(), fetch, monthlyCapUsd: settings.monthlyApiBudgetUsd })
   revalidatePath('/settings')
-  if (!out.ok) return { ...echo, error: out.error }
+  const previous = prev.outcome?.mode === 'anywhere' ? { from: prev.values?.from ?? '', destinations: prev.outcome.destinations } : prev.lastAnywhere
+  const lastAnywhere = out.ok && out.mode === 'anywhere' ? undefined : previous?.from === parsed.data.from ? previous : undefined
+  if (!out.ok) return { ...echo, error: out.error, lastAnywhere }
   const card = wallet.cardType as CardType
   return {
     ...echo,
     error: null,
     outcome: out,
+    lastAnywhere,
     earn: { cardLabel: cardLabel(card), rates: FLIGHT_EARN[card] ?? FLIGHT_EARN.other, pointCents: settings.pointFloorCents, adults: parsed.data.adults, roundTrip: !!parsed.data.returnDate },
   }
 }
