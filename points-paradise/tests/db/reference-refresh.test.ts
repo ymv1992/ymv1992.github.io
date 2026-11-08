@@ -42,6 +42,16 @@ describe('reference data refresh', () => {
     expect((await partner('marriott')).verificationStatus).toBe('owner_verified')
   })
 
+  it('includes the reported November 2026 bonuses with their Eastern-time windows', async () => {
+    const byPartner = (id: string) => PROMOTION_SEED.find((p) => p.partnerId === id && p.startsAt?.toISOString() === '2026-11-01T04:00:00.000Z')!
+    expect(byPartner('ihg')).toMatchObject({ bonusPercent: 80 })
+    for (const id of ['british_airways', 'iberia', 'aer_lingus']) expect(byPartner(id)).toMatchObject({ bonusPercent: 30, endsAt: new Date('2026-12-02T04:59:00Z') })
+    expect(byPartner('wyndham')).toMatchObject({ bonusPercent: 30, endsAt: new Date('2026-12-04T04:59:00Z') })
+    const ids = PROMOTION_SEED.map((p) => p.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    for (const p of PROMOTION_SEED) expect(PARTNER_SEED.map((x) => x.id)).toContain(p.partnerId)
+  })
+
   it('adds new bonuses, refreshes reported ones, and leaves ones the owner verified alone', async () => {
     const ihg = PROMOTION_SEED.find((p) => p.partnerId === 'ihg')!
     expect(await promo(ihg.id!)).toMatchObject({ bonusPercent: 80, verificationStatus: 'reported' })
