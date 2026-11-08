@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { cardLabel, type CardType } from '@/lib/domain/constants'
 import { points, usd } from '@/lib/format'
 import { getEvaluation } from '@/lib/server/loaders'
+import { CardBenefitsCard } from '@/components/card-benefits'
 import { Icon, type IconName } from '@/components/icons'
 import { Card, PageHeader, Stat } from '@/components/ui'
 
@@ -34,6 +35,9 @@ export default async function MePage() {
         <Stat label="Cash budget" value={usd(profile.maxCashUsd)} />
         <Stat label="Saved deals" value={data.savedIds.size} />
       </Card>
+      <div className="mb-6">
+        <CardBenefitsCard card={wallet.cardType as CardType} />
+      </div>
       <ul className="grid gap-2 sm:grid-cols-2">
         {LINKS.map((l) => (
           <li key={l.href}>

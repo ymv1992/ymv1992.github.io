@@ -157,7 +157,7 @@ export interface TransferPartner {
   programUrl: string | null
   sourceUrls: string[]
   lastVerifiedAt: Date | null
-  verificationStatus: 'official_verified' | 'research_seed' | 'owner_verified' | 'stale'
+  verificationStatus: 'official_verified' | 'research_seed' | 'owner_verified' | 'owner_edited' | 'stale'
   active: boolean
   notes: string | null
 }

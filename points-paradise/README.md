@@ -390,6 +390,30 @@ touches `points-paradise/` (`.github/workflows/points-paradise-ci.yml`).
   1–5 nights and the programs (Hyatt, Marriott, IHG, Wyndham). Each search
   is one lookup. Results show Chase points, the hotel's cash rate and the
   value, best value first.
+- **Your card's benefits (Profile; also linked from Settings).** This
+  shows what your Chase card earns by category, its credits and perks
+  (marked **New** when recently added), and how its transfers differ (such
+  as Hyatt at 4:3 on Sapphire Preferred). It also shows the annual fee, the
+  date it was last checked, and its sources.
+- **Kept up to date every week.** A scheduled Claude Code task checks
+  public reporting each week: Chase's newsroom, card reviews and points
+  blogs. It looks for changes to card benefits, earning rates, transfer
+  partners and ratios, and current transfer bonuses. It updates three
+  files:
+  - `src/lib/domain/card-benefits.ts` (benefits and the "checked" date)
+  - `src/lib/domain/earning.ts` (cash-fare earning rates; a test keeps
+    them in step with the benefits)
+  - `src/lib/db/seed-reference.ts` (partners, ratios and bonuses, each
+    with its source)
+
+  It then runs the checks and ships the update like any other change.
+  - When the site starts after a deploy, new bonuses are added and
+    partners and bonuses that came from research are brought up to date.
+  - Anything you edited or verified yourself on the Transfer Center is
+    never overwritten.
+  - Edited-but-unverified partners are marked **Edited by you — verify**.
+  - Bonuses from news reports are marked **Reported — verify on
+    chase.com**. The app never reads chase.com itself.
 - **Weekend getaways (Discover → Weekend getaways).** Shows where points
   can take you over the next 4, 8 or 12 weekends from your home airports.
   - Choose a long weekend (out Thursday or Friday, back Sunday or Monday)

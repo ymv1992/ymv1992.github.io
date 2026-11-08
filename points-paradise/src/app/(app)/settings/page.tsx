@@ -106,6 +106,9 @@ export default async function SettingsPage() {
                   </option>
                 ))}
               </select>
+              <Link href="/me" className="mt-1 inline-block text-xs text-primary hover:underline">
+                See what your card earns and includes →
+              </Link>
             </div>
           </div>
           <details>

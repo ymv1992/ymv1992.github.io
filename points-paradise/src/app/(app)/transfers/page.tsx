@@ -19,6 +19,7 @@ const VERIFICATION_LABEL = {
   official_verified: { label: 'Verified with Chase', tone: 'ok' },
   owner_verified: { label: 'Verified by you', tone: 'ok' },
   research_seed: { label: 'Research — verify', tone: 'warn' },
+  owner_edited: { label: 'Edited by you — verify', tone: 'warn' },
   stale: { label: 'Stale — re-verify', tone: 'danger' },
 } as const
 
