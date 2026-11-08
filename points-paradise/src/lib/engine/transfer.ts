@@ -196,7 +196,9 @@ export function quoteTransfer(input: QuoteInput): TransferQuote | null {
     )
   }
   if (!partner.active) warnings.push(`${partner.name} is not listed as an active Chase transfer partner.`)
-  if (partner.verificationStatus !== 'official_verified' && partner.verificationStatus !== 'owner_verified') {
+  if (partner.verificationStatus === 'owner_edited') {
+    warnings.push('You edited this partner but haven’t confirmed it in your Chase account yet. Confirm the ratio before transferring.')
+  } else if (partner.verificationStatus !== 'official_verified' && partner.verificationStatus !== 'owner_verified') {
     warnings.push('Transfer ratio comes from research, not a confirmed Chase source. Confirm it in your Chase account before transferring.')
   }
   const ratio = effectiveRatio(partner, input.card)

@@ -1,4 +1,4 @@
-import { asc, desc, eq } from 'drizzle-orm'
+import { asc, desc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { CARD_TYPE_IDS } from '../domain/constants'
 import type { AppDb } from '../db/client'
@@ -110,7 +110,8 @@ export async function updatePartner(db: AppDb, id: string, input: PartnerUpdate,
       typicalValueCents: input.typicalValueCents,
       active: input.active,
       notes: input.notes,
-      ...(input.markVerified ? { verificationStatus: 'owner_verified' as const, lastVerifiedAt: now } : {}),
+      // Either way it is now the owner's data, so the weekly reference refresh won't overwrite it.
+      ...(input.markVerified ? { verificationStatus: 'owner_verified' as const, lastVerifiedAt: now } : { verificationStatus: sql`case when ${transferPartners.verificationStatus} = 'owner_verified' then 'owner_verified' else 'owner_edited' end` }),
       updatedAt: now,
     })
     .where(eq(transferPartners.id, id))

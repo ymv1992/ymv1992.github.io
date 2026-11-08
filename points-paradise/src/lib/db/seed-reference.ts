@@ -1,4 +1,4 @@
-import type { InferInsertModel } from 'drizzle-orm'
+import { and, eq, type InferInsertModel } from 'drizzle-orm'
 import type { AppDb } from './client'
 import { dataSources, transferPartners, transferPromotions } from './schema'
 
@@ -16,6 +16,8 @@ export const RESEARCH_SOURCES = {
   hyattRatio2: 'https://creditodds.com/news/chase-hyatt-transfer-ratio-4-3-october-1',
   marriottBonus: 'https://milestomemories.com/chase-offering-70-transfer-bonus-for-marriott-bonvoy/',
   marriottBonus2: 'https://www.insideflyer.com/posts/chase-offers-70-bonus-to-marriott-bonvoy/',
+  ihgBonus: 'https://onemileatatime.com/deals/chase-ihg-transfer-bonus/',
+  ihgBonus2: 'https://www.doctorofcredit.com/chase-ultimate-rewards-80-transfer-bonus-to-ihg-11-8-5/',
 } as const
 
 export const RESEARCH_DATE = new Date('2026-10-18T00:00:00Z')
@@ -256,6 +258,22 @@ export const PROMOTION_SEED: PromotionInsert[] = [
     verificationStatus: 'reported',
     lastVerifiedAt: RESEARCH_DATE,
     notes: 'Reported window: 12:00 AM ET Sep 15 – 11:59 PM ET Oct 15, 2026. Bonus points reported to post within seven days.',
+  },
+  {
+    id: '6b7f1c2e-6d0a-4d5e-9a40-2d0b7c1a7002',
+    partnerId: 'ihg',
+    bonusPercent: 80,
+    startsAt: new Date('2026-11-01T04:00:00Z'),
+    endsAt: new Date('2026-12-04T04:59:00Z'),
+    endsAtTimezone: 'America/New_York',
+    eligibleCardTypes: null,
+    isTargeted: false,
+    eligibility: 'Reported as available to Ultimate Rewards cardholders who can transfer points.',
+    sourceUrl: RESEARCH_SOURCES.ihgBonus,
+    sourceKind: 'announcement',
+    verificationStatus: 'reported',
+    lastVerifiedAt: new Date('2026-11-08T00:00:00Z'),
+    notes: 'Reported window: 12:00 AM ET Nov 1 – 11:59 PM ET Dec 3, 2026 (1,000 Chase points → 1,800 IHG points). Also reported by Doctor of Credit.',
   },
 ]
 
@@ -566,9 +584,43 @@ export const DATA_SOURCE_SEED: SourceInsert[] = [
   },
 ]
 
-/** Inserts reference rows that do not exist yet. Never overwrites rows the owner has edited. */
+/** Same value, comparing dates by time and treating undefined as null. */
+function same(a: unknown, b: unknown): boolean {
+  const norm = (v: unknown) => (v instanceof Date ? v.getTime() : (v ?? null))
+  return JSON.stringify(norm(a)) === JSON.stringify(norm(b))
+}
+
+/** The fields of a seed row that differ from the stored row. */
+function changes<T extends Record<string, unknown>>(seed: T, row: Record<string, unknown>, skip: readonly string[]): Partial<T> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(seed)) if (!skip.includes(k) && !same(v, row[k])) out[k] = v ?? null
+  return out as Partial<T>
+}
+
+/**
+ * Inserts reference rows that do not exist yet, and brings research-based rows
+ * up to date when a newer release changes them (a new transfer ratio, a bonus
+ * whose dates changed). Never overwrites rows the owner verified or edited:
+ * only partners still marked `research_seed` and bonuses still `reported` are
+ * refreshed.
+ */
 export async function ensureReferenceData(db: AppDb): Promise<void> {
   await db.insert(transferPartners).values(PARTNER_SEED).onConflictDoNothing()
   await db.insert(dataSources).values(DATA_SOURCE_SEED).onConflictDoNothing()
   await db.insert(transferPromotions).values(PROMOTION_SEED).onConflictDoNothing()
+
+  const partners = new Map((await db.select().from(transferPartners)).map((r) => [r.id, r]))
+  for (const seed of PARTNER_SEED) {
+    const row = partners.get(seed.id)
+    if (!row || row.verificationStatus !== 'research_seed') continue
+    const set = changes(seed, row, ['id', 'verificationStatus'])
+    if (Object.keys(set).length) await db.update(transferPartners).set(set).where(and(eq(transferPartners.id, seed.id), eq(transferPartners.verificationStatus, 'research_seed')))
+  }
+  const promos = new Map((await db.select().from(transferPromotions)).map((r) => [r.id, r]))
+  for (const seed of PROMOTION_SEED) {
+    const row = seed.id ? promos.get(seed.id) : undefined
+    if (!row || row.verificationStatus !== 'reported') continue
+    const set = changes(seed, row, ['id', 'verificationStatus', 'createdAt'])
+    if (Object.keys(set).length) await db.update(transferPromotions).set(set).where(and(eq(transferPromotions.id, seed.id!), eq(transferPromotions.verificationStatus, 'reported')))
+  }
 }

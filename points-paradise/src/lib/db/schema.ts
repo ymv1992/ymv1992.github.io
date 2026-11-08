@@ -149,7 +149,8 @@ export const transferPartners = pgTable('transfer_partners', {
   sourceUrls: text('source_urls').array().notNull().default(sql`'{}'::text[]`),
   lastVerifiedAt: ts('last_verified_at'),
   verificationStatus: text('verification_status')
-    .$type<'official_verified' | 'research_seed' | 'owner_verified' | 'stale'>()
+    /** owner_edited: changed by the owner without confirming in Chase; the weekly reference refresh leaves it alone. */
+    .$type<'official_verified' | 'research_seed' | 'owner_verified' | 'owner_edited' | 'stale'>()
     .notNull()
     .default('research_seed'),
   active: boolean('active').notNull().default(true),
