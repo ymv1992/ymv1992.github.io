@@ -7,7 +7,7 @@
 import type { CardType } from './constants'
 
 /** When this list was last checked against public reporting (YYYY-MM-DD). */
-export const BENEFITS_CHECKED = '2026-11-08'
+export const BENEFITS_CHECKED = '2026-11-09'
 
 export interface CardBenefits {
   annualFeeUsd: number | null
@@ -27,6 +27,7 @@ const SOURCES = {
   hyatt: { label: 'The Points Guy: Hyatt transfer ratio change', url: 'https://thepointsguy.com/news/chase-hyatt-transfer-ratio-change/' },
   reserveCredits: { label: 'View from the Wing: Sapphire Reserve hotel and Edit credits', url: 'https://viewfromthewing.com/chase-sapphire-reserve-changed-again-new-250-hotel-credit-and-more-flexible-500-edit-credit/' },
   reserveReview: { label: 'point.me: Sapphire Reserve 2026 changes', url: 'https://www.point.me/c/insights/chase-sapphire-reserve/' },
+  reserveEditDoc: { label: 'Doctor of Credit: Reserve Edit credit and one-time $250 hotel credit', url: 'https://doctorofcredit.com/chase-sapphire-reserve-enhances-500-the-edit-credit-adds-one-time-250-hotel-credit' },
   reserveBusiness: { label: 'AwardWallet: Sapphire Reserve for Business changes', url: 'https://awardwallet.com/news/chase-ultimate-rewards/sapphire-reserve-business-card-changes' },
 } as const
 
@@ -63,12 +64,12 @@ export const CARD_BENEFITS: Partial<Record<CardType, CardBenefits>> = {
     earning: RESERVE_EARNING,
     perks: [
       { what: '$300 annual travel credit' },
-      { what: 'Up to $500 a year for hotels in The Edit by Chase Travel (made easier to use in 2026)', isNew: true },
-      { what: 'Up to $250 for select Chase Travel hotels', isNew: true },
+      { what: 'Up to $500 a year for hotels in The Edit by Chase Travel, as two $250 credits usable any time in the year' },
+      { what: 'One-time credit of up to $250 for prepaid stays at select Chase Travel hotels, for 2026 only' },
       { what: 'Airport lounges: Priority Pass and Chase Sapphire Lounges' },
     ],
     transfers: ['World of Hyatt stays 1:1 on Reserve cards.'],
-    sources: [SOURCES.reserveCredits, SOURCES.reserveReview, SOURCES.hyatt],
+    sources: [SOURCES.reserveCredits, SOURCES.reserveEditDoc, SOURCES.reserveReview, SOURCES.hyatt],
   },
   sapphire_reserve_business: {
     annualFeeUsd: 795,
