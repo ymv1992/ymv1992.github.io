@@ -7,7 +7,7 @@
 import type { CardType } from './constants'
 
 /** When this list was last checked against public reporting (YYYY-MM-DD). */
-export const BENEFITS_CHECKED = '2026-11-09'
+export const BENEFITS_CHECKED = '2026-11-16'
 
 export interface CardBenefits {
   annualFeeUsd: number | null
@@ -29,6 +29,9 @@ const SOURCES = {
   reserveReview: { label: 'point.me: Sapphire Reserve 2026 changes', url: 'https://www.point.me/c/insights/chase-sapphire-reserve/' },
   reserveEditDoc: { label: 'Doctor of Credit: Reserve Edit credit and one-time $250 hotel credit', url: 'https://doctorofcredit.com/chase-sapphire-reserve-enhances-500-the-edit-credit-adds-one-time-250-hotel-credit' },
   reserveBusiness: { label: 'AwardWallet: Sapphire Reserve for Business changes', url: 'https://awardwallet.com/news/chase-ultimate-rewards/sapphire-reserve-business-card-changes' },
+  businessEditDoc: { label: 'Doctor of Credit: Reserve for Business Edit credit rises to $1,000', url: 'https://www.doctorofcredit.com/chase-sapphire-reserve-for-business-increases-the-edit-credit-to-1000-per-year-4-x-250/' },
+  businessEditOmaat: { label: 'One Mile at a Time: Reserve for Business hotel credit and ad cap', url: 'https://onemileatatime.com/news/sapphire-reserve-business-bigger-hotel-credit-bonus-category-cap/' },
+  businessReview: { label: 'Frequent Miler: Sapphire Reserve for Business review', url: 'https://frequentmiler.com/chase-sapphire-reserve-for-business%E2%84%A0-credit-card-review/' },
 } as const
 
 const RESERVE_EARNING: CardBenefits['earning'] = [
@@ -74,12 +77,19 @@ export const CARD_BENEFITS: Partial<Record<CardType, CardBenefits>> = {
   sapphire_reserve_business: {
     annualFeeUsd: 795,
     earning: [
-      ...RESERVE_EARNING.slice(0, 3),
-      { rate: '3×', what: 'Social media and search advertising (first $1 million a year from November 15, 2026)', isNew: true },
-      RESERVE_EARNING[3]!,
+      ...RESERVE_EARNING.slice(0, 2),
+      { rate: '3×', what: 'Social media and search advertising (on the first $1 million a year since November 15, 2026)', isNew: true },
+      { rate: '1×', what: 'Everything else, including dining (3× dining is a personal Reserve benefit)' },
     ],
-    perks: [{ what: '$300 annual travel credit' }, { what: 'Airport lounges: Priority Pass and Chase Sapphire Lounges' }],
+    perks: [
+      { what: '$300 annual travel credit' },
+      {
+        what: 'Up to $500 a year for prepaid stays of two nights or more in The Edit by Chase Travel ($250 at a time), doubling to $1,000 a year (four $250 credits) from January 1, 2027',
+        isNew: true,
+      },
+      { what: 'Airport lounges: Priority Pass and Chase Sapphire Lounges' },
+    ],
     transfers: ['World of Hyatt stays 1:1 on Reserve cards.'],
-    sources: [SOURCES.reserveBusiness, SOURCES.hyatt],
+    sources: [SOURCES.businessEditDoc, SOURCES.businessEditOmaat, SOURCES.businessReview, SOURCES.reserveBusiness, SOURCES.hyatt],
   },
 }
