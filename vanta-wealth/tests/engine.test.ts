@@ -102,11 +102,11 @@ describe('applyTrade', () => {
 
 describe('parseHoldings', () => {
   it('reads a quick list with mixed separators and unknown costs', () => {
-    const r = parseHoldings('AAA 62 / $97.64 · BBB 0.04161 / $266.94 · CCC 3 / ?\nBitcoin 1\nXRP 500')
+    const r = parseHoldings('AAA 12 / $34.50 · BBB 0.0125 / $210.75 · CCC 3 / ?\nBitcoin 1\nXRP 500')
     expect(r.errors).toEqual([])
     expect(r.rows.map((x) => [x.symbol, x.quantity, x.avgCost])).toEqual([
-      ['AAA', 62, 97.64],
-      ['BBB', 0.04161, 266.94],
+      ['AAA', 12, 34.5],
+      ['BBB', 0.0125, 210.75],
       ['CCC', 3, null],
       ['BTC', 1, null],
       ['XRP', 500, null],
