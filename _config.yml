@@ -3,3 +3,4 @@
 # keep its source and docs out of the Pages build.
 exclude:
   - points-paradise
+  - vanta-wealth

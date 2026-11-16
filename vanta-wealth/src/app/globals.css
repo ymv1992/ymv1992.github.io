@@ -1,0 +1,158 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Light mode: warm paper with deep bronze accents. */
+:root {
+  --bg: #f5f2eb;
+  --surface: #fffdf8;
+  --surface-2: #eeeadf;
+  --ink: #1b1a17;
+  --muted: #5d594f;
+  --faint: #8a8578;
+  --line: #e0d9c9;
+  --gold: #86682a;
+  --gold-ink: #ffffff;
+  --gold-soft: #f0e6cd;
+  --danger: #a8483a;
+  --danger-soft: #f6e1dc;
+  --warn: #8a6210;
+  --warn-soft: #f6ebd2;
+  --ok: #2f6e4c;
+  --ok-soft: #dcefe3;
+  --band-1: #e9dcba;
+  --band-2: #d6c08a;
+  --shadow: 0 1px 2px rgb(27 26 23 / 0.05), 0 8px 24px rgb(27 26 23 / 0.05);
+  color-scheme: light;
+}
+
+/* Default look: charcoal and near-black with restrained champagne gold. */
+.dark {
+  --bg: #0b0b0c;
+  --surface: #141415;
+  --surface-2: #1c1c1e;
+  --ink: #ece8df;
+  --muted: #aaa598;
+  --faint: #7d786d;
+  --line: #29292c;
+  --gold: #cdb27e;
+  --gold-ink: #14110a;
+  --gold-soft: #2a2416;
+  --danger: #e2857a;
+  --danger-soft: #351c19;
+  --warn: #dcae58;
+  --warn-soft: #33290f;
+  --ok: #7cc39b;
+  --ok-soft: #152d21;
+  --band-1: #2b261b;
+  --band-2: #4a3f29;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px rgb(0 0 0 / 0.3);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-gold: var(--gold);
+  --color-gold-ink: var(--gold-ink);
+  --color-gold-soft: var(--gold-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-band-1: var(--band-1);
+  --color-band-2: var(--band-2);
+  --font-display: 'Fraunces Variable', 'Iowan Old Style', Georgia, serif;
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
+  --shadow-card: var(--shadow);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  letter-spacing: -0.01em;
+}
+
+/* Every figure uses the monospace face with fixed-width digits. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@layer components {
+  .field {
+    width: 100%;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--ink);
+    border-radius: 10px;
+    padding: 0.5rem 0.7rem;
+    font-size: 0.95rem;
+  }
+  .field:focus {
+    outline: 2px solid var(--gold);
+    outline-offset: 0;
+    border-color: transparent;
+  }
+  .label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 0.3rem;
+  }
+  .eyebrow {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  .hairline {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    opacity: 0.35;
+  }
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
