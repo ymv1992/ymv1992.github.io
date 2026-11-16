@@ -41,7 +41,10 @@ export interface JobRecord {
 }
 
 export async function logJob(db: AppDb, j: JobRecord): Promise<void> {
-  const finished = j.finishedAt ?? new Date()
+  // A skipped job never ran, so it finishes when it starts. Reading the wall
+  // clock here would give a bogus duration whenever startedAt came from an
+  // injected clock (and overflow the integer column once that clock is weeks old).
+  const finished = j.finishedAt ?? (j.status.startsWith('skipped') ? j.startedAt : new Date())
   await db.insert(searchJobs).values({
     provider: j.provider,
     jobType: j.jobType,
