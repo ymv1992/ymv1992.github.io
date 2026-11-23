@@ -52,6 +52,16 @@ describe('reference data refresh', () => {
     for (const p of PROMOTION_SEED) expect(PARTNER_SEED.map((x) => x.id)).toContain(p.partnerId)
   })
 
+  it('includes the Virgin Atlantic 40% bonus and the Cathay and Qantas partners reported in late November 2026', async () => {
+    const virgin = PROMOTION_SEED.find((p) => p.id === '6b7f1c2e-6d0a-4d5e-9a40-2d0b7c1a7007')!
+    // 12:00 AM ET Nov 16 – 11:59 PM ET Dec 30, 2026 (Eastern Standard Time, UTC−5).
+    expect(virgin).toMatchObject({ partnerId: 'virgin_atlantic', bonusPercent: 40, startsAt: new Date('2026-11-16T05:00:00Z'), endsAt: new Date('2026-12-31T04:59:00Z') })
+    await ensureReferenceData(db)
+    for (const id of ['cathay', 'qantas']) {
+      expect(await partner(id)).toMatchObject({ active: true, baseRatioChase: 1, baseRatioPartner: 1, typicalValueCents: null, verificationStatus: 'research_seed' })
+    }
+  })
+
   it('adds new bonuses, refreshes reported ones, and leaves ones the owner verified alone', async () => {
     const ihg = PROMOTION_SEED.find((p) => p.partnerId === 'ihg')!
     expect(await promo(ihg.id!)).toMatchObject({ bonusPercent: 80, verificationStatus: 'reported' })
