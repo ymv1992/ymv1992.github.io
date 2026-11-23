@@ -38,7 +38,7 @@ export default function ImportPage() {
         <h2 className="font-display text-xl">Format</h2>
         <p className="mt-1 text-muted">
           Column names match the form fields. Required: <code>kind</code>, <code>providerName</code>, <code>programId</code>, <code>destCity</code> and a destination airport or country; flights also need{' '}
-          <code>cabin</code>, hotels need <code>property</code>. Program ids: aer_lingus, aeroplan, flying_blue, british_airways, iberia, jetblue, singapore, southwest, united, virgin_atlantic, hyatt, marriott, ihg,
+          <code>cabin</code>, hotels need <code>property</code>. Program ids: aer_lingus, aeroplan, flying_blue, british_airways, iberia, jetblue, singapore, southwest, united, virgin_atlantic, cathay, qantas, hyatt, marriott, ihg,
           wyndham, chase_travel.
         </p>
         <h3 className="mt-4 font-semibold">CSV example</h3>

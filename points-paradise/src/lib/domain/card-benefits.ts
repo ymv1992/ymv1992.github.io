@@ -7,7 +7,7 @@
 import type { CardType } from './constants'
 
 /** When this list was last checked against public reporting (YYYY-MM-DD). */
-export const BENEFITS_CHECKED = '2026-11-16'
+export const BENEFITS_CHECKED = '2026-11-23'
 
 export interface CardBenefits {
   annualFeeUsd: number | null
@@ -32,7 +32,11 @@ const SOURCES = {
   businessEditDoc: { label: 'Doctor of Credit: Reserve for Business Edit credit rises to $1,000', url: 'https://www.doctorofcredit.com/chase-sapphire-reserve-for-business-increases-the-edit-credit-to-1000-per-year-4-x-250/' },
   businessEditOmaat: { label: 'One Mile at a Time: Reserve for Business hotel credit and ad cap', url: 'https://onemileatatime.com/news/sapphire-reserve-business-bigger-hotel-credit-bonus-category-cap/' },
   businessReview: { label: 'Frequent Miler: Sapphire Reserve for Business review', url: 'https://frequentmiler.com/chase-sapphire-reserve-for-business%E2%84%A0-credit-card-review/' },
+  newPartners: { label: 'NerdWallet: Chase adds Qantas and Cathay Pacific', url: 'https://www.nerdwallet.com/travel/news/chase-transfer-partners-cathay-qantas' },
 } as const
+
+/** Partners added for every Ultimate Rewards card (reported Nov 18, 2026). */
+const NEW_PARTNERS = 'New since November 18, 2026: Cathay Pacific Asia Miles and Qantas Frequent Flyer, both 1:1.'
 
 const RESERVE_EARNING: CardBenefits['earning'] = [
   { rate: '8×', what: 'Chase Travel purchases (flights, hotels, cars and more)' },
@@ -59,8 +63,8 @@ export const CARD_BENEFITS: Partial<Record<CardType, CardBenefits>> = {
       { what: 'Apple TV free for a year when activated by December 31, 2026', isNew: true },
       { what: 'Trip delay, trip cancellation and baggage delay coverage when you pay with the card' },
     ],
-    transfers: ['World of Hyatt is 4:3 (1,000 Chase points → 750 Hyatt points) since October 1, 2026. Other partners stay 1:1.'],
-    sources: [SOURCES.chaseNewsPreferred, SOURCES.forbesPreferred, SOURCES.nerdwalletPreferred, SOURCES.hyatt],
+    transfers: ['World of Hyatt is 4:3 (1,000 Chase points → 750 Hyatt points) since October 1, 2026. Other partners stay 1:1.', NEW_PARTNERS],
+    sources: [SOURCES.chaseNewsPreferred, SOURCES.forbesPreferred, SOURCES.nerdwalletPreferred, SOURCES.hyatt, SOURCES.newPartners],
   },
   sapphire_reserve: {
     annualFeeUsd: 795,
@@ -71,8 +75,8 @@ export const CARD_BENEFITS: Partial<Record<CardType, CardBenefits>> = {
       { what: 'One-time credit of up to $250 for prepaid stays at select Chase Travel hotels, for 2026 only' },
       { what: 'Airport lounges: Priority Pass and Chase Sapphire Lounges' },
     ],
-    transfers: ['World of Hyatt stays 1:1 on Reserve cards.'],
-    sources: [SOURCES.reserveCredits, SOURCES.reserveEditDoc, SOURCES.reserveReview, SOURCES.hyatt],
+    transfers: ['World of Hyatt stays 1:1 on Reserve cards.', NEW_PARTNERS],
+    sources: [SOURCES.reserveCredits, SOURCES.reserveEditDoc, SOURCES.reserveReview, SOURCES.hyatt, SOURCES.newPartners],
   },
   sapphire_reserve_business: {
     annualFeeUsd: 795,
@@ -89,7 +93,7 @@ export const CARD_BENEFITS: Partial<Record<CardType, CardBenefits>> = {
       },
       { what: 'Airport lounges: Priority Pass and Chase Sapphire Lounges' },
     ],
-    transfers: ['World of Hyatt stays 1:1 on Reserve cards.'],
-    sources: [SOURCES.businessEditDoc, SOURCES.businessEditOmaat, SOURCES.businessReview, SOURCES.reserveBusiness, SOURCES.hyatt],
+    transfers: ['World of Hyatt stays 1:1 on Reserve cards.', NEW_PARTNERS],
+    sources: [SOURCES.businessEditDoc, SOURCES.businessEditOmaat, SOURCES.businessReview, SOURCES.reserveBusiness, SOURCES.hyatt, SOURCES.newPartners],
   },
 }
